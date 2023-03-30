@@ -1,2 +1,3 @@
 CHANGELOG.md annex.largefiles=nothing
 README.md annex.largefiles=nothing
+* annex.largefiles=((mimeencoding=binary)and(largerthan=0))
