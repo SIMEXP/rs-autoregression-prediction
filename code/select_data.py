@@ -13,7 +13,29 @@ field_mappers = {
 }
 
 tr_mapper = {
-    "abide1": 2500,
+    "abide1": {
+        "Caltech": 2000,
+        "CMU": 2000,
+        "KKI_1": 2500,
+        "MaxMun": 3000,
+        "NYU_1": 2000,
+        "NYU_2": 2000,
+        "Olin": 1500,
+        "OHSU_1": 2500,
+        "SDSU_1": 2000,
+        "SBL": 2200,
+        "Stanford": 2000,
+        "Trinity": 2000,
+        "UCLA_1": 3000,
+        "UCLA_2": 3000,
+        "Leuven_1": 1656,
+        "Leuven_2": 1667,
+        "UM_1": 2000,
+        "UM_2": 2000,
+        "Pitt": 1500,
+        "USM": 2000,
+        "Yale": 2000,
+    },
     "abide2": {
         "BNI_1": 3000,
         "EMC_1": 2000,
@@ -118,7 +140,7 @@ def _resample_tr(data, original_tr):
     return f(time_stamp_new.T).T
 
 
-def _process_data(abide_version, site_name, subjects, f, dset):
+def _process_data(original_tr, subjects, f, dset):
     subject, _, _ = _parse_path(dset)
     if not subject or "connectome" in dset:
         del f[dset]
@@ -134,7 +156,7 @@ def _process_data(abide_version, site_name, subjects, f, dset):
     print(f"resample {dset}")
     data = f[dset][:]
     # resample the time series
-    resampled = _resample_tr(data, tr_mapper[abide_version][site_name])
+    resampled = _resample_tr(data, original_tr)
     del f[dset]
     f.create_dataset(dset, data=resampled)
     return
@@ -147,6 +169,14 @@ def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
     ].values
     subjects = subjects.tolist()
     return subjects
+
+
+def _get_abide_tr(abide_version, site_name):
+    original_tr = tr_mapper[abide_version]
+    if not isinstance(original_tr, int):
+        original_tr = original_tr[site_name]
+    original_tr /= 1000
+    return original_tr
 
 
 def main():
@@ -188,10 +218,12 @@ def main():
         subjects = _get_subjects_passed_qc(qc, abide_version, site_name)
         if len(subjects) == 0:
             continue
+        original_tr = _get_abide_tr(abide_version, site_name)
+
         with h5py.File(path_concat, "a") as f:
             for dset in _traverse_datasets(f):
                 print(dset)
-                _process_data(abide_version, site_name, subjects, f, dset)
+                _process_data(original_tr, subjects, f, dset)
 
 
 if __name__ == "__main__":
