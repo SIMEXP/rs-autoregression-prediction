@@ -128,7 +128,6 @@ def concat_h5(path_h5s, output_h5):
                         g.create_dataset(dataset_name, data=data)
                     else:
                         site.create_dataset(dataset_name, data=data)
-
     return output_h5
 
 
@@ -218,8 +217,11 @@ def main():
                 # resample the time series
                 resampled = _resample_tr(data, original_tr)
                 with h5py.File(path_concat, "a") as new_f:
-                    new_f.create_dataset(f"site-{site_name}_{dset.split('/')[-1]}", data=resampled)
-    # remove the temporay file
+                    new_f.create_dataset(
+                        f"site-{site_name}_{dset.split('/')[-1]}",
+                        data=resampled,
+                    )
+    # remove the temporary file
     path_tmp.unlink()
 
 
