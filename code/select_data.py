@@ -15,24 +15,27 @@ field_mappers = {
 tr_mapper = {
     "abide1": {
         "Caltech": 2000,
-        "CMU": 2000,
-        "KKI_1": 2500,
-        "MaxMun": 3000,
-        "NYU_1": 2000,
-        "NYU_2": 2000,
+        "CMU_a": 2000,
+        "CMU_b": 2000,
+        "KKI": 2500,
+        "Leuven_1": 1656,
+        "Leuven_2": 1667,
+        "MaxMun_a": 3000,
+        "MaxMun_b": 3000,
+        "MaxMun_c": 3000,
+        "MaxMun_d": 3000,
+        "NYU": 2000,
         "Olin": 1500,
-        "OHSU_1": 2500,
-        "SDSU_1": 2000,
+        "OHSU": 2500,
+        "Pitt": 1500,
+        "SDSU": 2000,
         "SBL": 2200,
         "Stanford": 2000,
         "Trinity": 2000,
         "UCLA_1": 3000,
         "UCLA_2": 3000,
-        "Leuven_1": 1656,
-        "Leuven_2": 1667,
         "UM_1": 2000,
         "UM_2": 2000,
-        "Pitt": 1500,
         "USM": 2000,
         "Yale": 2000,
     },
@@ -114,18 +117,18 @@ def concat_h5(path_h5s, output_h5):
     """Concatenate connectome h5 files."""
     with h5py.File(output_h5, "a") as h5file:
         for p in path_h5s:
-            print(p)
             site_name = p.parent.name
             site = h5file.create_group(site_name)
             with h5py.File(p, "r") as f:
                 for dset in _traverse_datasets(f):
                     subject, session, dataset_name = _parse_path(dset)
                     data = f[dset][:]
-                    if not subject and not session:
-                        site.create_dataset(dataset_name, data=data)
-                    else:
+                    if subject or session:
                         g = _fetch_h5_group(site, subject, session)
                         g.create_dataset(dataset_name, data=data)
+                    else:
+                        site.create_dataset(dataset_name, data=data)
+
     return output_h5
 
 
@@ -140,35 +143,21 @@ def _resample_tr(data, original_tr):
     return f(time_stamp_new.T).T
 
 
-def _process_data(original_tr, subjects, f, dset):
-    subject, _, _ = _parse_path(dset)
-    if not subject or "connectome" in dset:
-        del f[dset]
-        print(f"remove {dset}")
-        return
-
-    current_sub = int(subject.split("sub-")[-1])
-    if current_sub not in subjects:
-        print(current_sub)
-        del f[dset]
-        return
-
-    print(f"resample {dset}")
-    data = f[dset][:]
-    # resample the time series
-    resampled = _resample_tr(data, original_tr)
-    del f[dset]
-    f.create_dataset(dset, data=resampled)
-    return
-
-
 def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
     site_filter = qc["site_name"] == site_name
     subjects = qc.loc[
         site_filter, field_mappers[abide_dataset_name]["SUB_ID"]
     ].values
-    subjects = subjects.tolist()
-    return subjects
+    return [int(s) for s in subjects.tolist()]
+
+
+def _check_subject_pass_qc(dset, subjects):
+    subject, _, _ = _parse_path(dset)
+    if not subject or "connectome" in dset:
+        return False
+    else:
+        current_sub = int(subject.split("sub-")[-1])
+    return current_sub in subjects
 
 
 def _get_abide_tr(abide_version, site_name):
@@ -196,16 +185,17 @@ def main():
     abide_version = args.abide_version
 
     path_connectomes = Path(
-        f"inputs/connectomes/sourcedata/{abide_version}_connectomes/"
+        f"inputs/connectomes/sourcedata/{abide_version}/{abide_version}_connectomes-0.2.0/"
     ).glob("*/atlas-MIST_desc-simple+gsr.h5")
     path_concat = f"inputs/connectomes/{abide_version}.h5"
-    if not Path(path_concat).exists():
-        path_concat = concat_h5(path_connectomes, path_concat)
+    path_tmp = Path("tmp.h5")
+    if not Path(path_tmp).exists():
+        path_tmp = concat_h5(path_connectomes, path_tmp)
     print("concatenated across site")
 
     # select subject based on each site, keep time series only and resample
     qc = pd.read_csv(
-        f"inputs/connectomes/sourcedata/{abide_version}_connectomes/{abide_version.upper()}_Pheno_PSM_matched.tsv",
+        f"inputs/connectomes/sourcedata/{abide_version}/{abide_version.upper()}_Pheno_PSM_matched.tsv",
         sep="\t",
     )
     qc["site_name"] = qc[field_mappers[abide_version]["site_name"]].replace(
@@ -220,10 +210,17 @@ def main():
             continue
         original_tr = _get_abide_tr(abide_version, site_name)
 
-        with h5py.File(path_concat, "a") as f:
+        with h5py.File(path_tmp, "r") as f:
             for dset in _traverse_datasets(f):
-                print(dset)
-                _process_data(original_tr, subjects, f, dset)
+                if not _check_subject_pass_qc(dset, subjects):
+                    continue
+                data = f[dset][:]
+                # resample the time series
+                resampled = _resample_tr(data, original_tr)
+                with h5py.File(path_concat, "a") as new_f:
+                    new_f.create_dataset(f"site-{site_name}_{dset.split('/')[-1]}", data=resampled)
+    # remove the temporay file
+    path_tmp.unlink()
 
 
 if __name__ == "__main__":
