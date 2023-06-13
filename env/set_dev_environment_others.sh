@@ -7,7 +7,7 @@ CUDA=cpu
 pip install --upgrade pip setuptools wheel
 pip install torch==${TORCH}
 pip install pyg-lib -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
-pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric
+pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-${TORCH}+${CUDA}.html
 pip install -r code/fmri-autoreg/requirements.txt
 pip install -e code/fmri-autoreg
 pip install -r env/requirements-dev.txt
