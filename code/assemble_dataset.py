@@ -175,7 +175,7 @@ def main():
     parser.add_argument(
         "atlas_dimensions",
         help="Select the dimensions you want to compile into a dataset",
-        choices=[122, 197, 325, 444],
+        choices=["122", "197", "325", "444"],
     )
 
     args = parser.parse_args()
