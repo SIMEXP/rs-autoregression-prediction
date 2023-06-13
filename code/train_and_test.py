@@ -76,6 +76,12 @@ def main():
     model, r2_tng, r2_val, Z_tng, Y_tng, Z_val, Y_val, _, _ = train(
         params, train_data, verbose=args.verbose
     )
+    np.save(os.path.join(output_dir, "r2_tng.npy"), r2_tng)
+    np.save(os.path.join(output_dir, "r2_val.npy"), r2_val)
+    np.save(os.path.join(output_dir, "pred_tng.npy"), Z_tng)
+    np.save(os.path.join(output_dir, "labels_tng.npy"), Y_tng)
+    np.save(os.path.join(output_dir, "pred_val.npy"), Z_val)
+    np.save(os.path.join(output_dir, "labels_val.npy"), Y_val)
 
     params["r2_mean_tng"] = r2_tng.mean()
     params["r2_std_tng"] = r2_tng.std()
@@ -99,13 +105,7 @@ def main():
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 
-    np.save(os.path.join(output_dir, "r2_tng.npy"), r2_tng)
-    np.save(os.path.join(output_dir, "r2_val.npy"), r2_val)
     np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
-    np.save(os.path.join(output_dir, "pred_tng.npy"), Z_tng)
-    np.save(os.path.join(output_dir, "labels_tng.npy"), Y_tng)
-    np.save(os.path.join(output_dir, "pred_val.npy"), Z_val)
-    np.save(os.path.join(output_dir, "labels_val.npy"), Y_val)
     np.save(os.path.join(output_dir, "pred_test.npy"), Z_test)
     np.save(os.path.join(output_dir, "labels_test.npy"), Y_test)
 

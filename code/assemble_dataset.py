@@ -5,6 +5,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+from nilearn import signal
 from scipy.interpolate import interp1d
 from src.data import load_data
 
@@ -117,13 +118,17 @@ def concat_h5(path_h5s, output_h5):
 
 
 def _resample_tr(data, original_tr):
+    # standardise to percent signal change
+    # data was already detrended.
+    data_psc = signal.clean(data, detrend=False, standardize="psc")
+    # resample data
     if TARGET_TR == original_tr:
-        return data
-    time_stamp_original = np.arange(0, data.shape[0]) * original_tr
-    scan_length_second = data.shape[0] * original_tr
+        return data_psc
+    time_stamp_original = np.arange(0, data_psc.shape[0]) * original_tr
+    scan_length_second = data_psc.shape[0] * original_tr
     n_resampled_timepoints = int(scan_length_second / TARGET_TR)
     time_stamp_new = np.arange(0, n_resampled_timepoints) * TARGET_TR
-    f = interp1d(time_stamp_original.T, data.T, fill_value="extrapolate")
+    f = interp1d(time_stamp_original.T, data_psc.T, fill_value="extrapolate")
     return f(time_stamp_new.T).T
 
 
@@ -135,7 +140,9 @@ def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
     return [int(s) for s in subjects.tolist()]
 
 
-def _check_subject_pass_qc(dset, subjects):
+def _check_subject_pass_qc(dset, subjects, atlas_dimensions):
+    if str(atlas_dimensions) not in dset:
+        return False
     subject, _, _ = _parse_path(dset)
     if not subject or "connectome" in dset:
         return False
@@ -165,6 +172,12 @@ def main():
         help="Select abide1 or abide2",
         choices=["abide1", "abide2"],
     )
+    parser.add_argument(
+        "atlas_dimensions",
+        help="Select the dimensions you want to compile into a dataset",
+        choices=[122, 197, 325, 444],
+    )
+
     args = parser.parse_args()
     abide_version = args.abide_version
 
@@ -196,7 +209,9 @@ def main():
 
         with h5py.File(path_tmp, "r") as f:
             for dset in load_data._traverse_datasets(f):
-                if not _check_subject_pass_qc(dset, subjects):
+                if not _check_subject_pass_qc(
+                    dset, subjects, args.atlas_dimensions
+                ):
                     continue
                 data = f[dset][:]
                 # resample the time series
@@ -231,6 +246,9 @@ def test_parse_path():
 def test_resample_tr():
     data = np.random.random((198, 122))
     data_tr3 = _resample_tr(data, 3)
+    scan_length_second = 198 * 3
+    n_resampled_timepoints = int(scan_length_second / TARGET_TR)
+    assert data_tr3.shape[0] == n_resampled_timepoints
     assert data_tr3.shape[1] == 122
     data_tr25 = _resample_tr(data, TARGET_TR)
     assert data_tr25.shape[1] == 122
