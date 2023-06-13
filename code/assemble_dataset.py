@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+from src.data import load_data
 
 field_mappers = {
     "abide1": {"site_name": "site_name", "SUB_ID": "SUB_ID"},
@@ -42,7 +43,7 @@ tr_mapper = {
     "abide2": {
         "BNI_1": 3000,
         "EMC_1": 2000,
-        "ETH_1": 2000,
+        "ETHZ_1": 2000,
         "GU_1": 2000,
         "IU_1": 813,
         "IP_1": 2700,
@@ -53,34 +54,18 @@ tr_mapper = {
         "OHSU_1": 2500,
         "ONRC_2": 475,
         "SDSU_1": 2000,
+        "SU_2": 2500,  # double check
         "TCD_1": 2000,
         "UCD_1": 2000,
         "UCLA_1": 3000,
         "USM_1": 2000,
         "UCLA_Long": 3000,
         "UPSM_Long": 1500,
+        "U_MIA_1": 2500,  # double check
     },
 }
 
 TARGET_TR = 2.5
-
-
-def _traverse_datasets(hdf_file):
-    """Load nested hdf5 files.
-    https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
-    """
-
-    def h5py_dataset_iterator(g, prefix=""):
-        for key in g.keys():
-            item = g[key]
-            path = f"{prefix}/{key}"
-            if isinstance(item, h5py.Dataset):  # test for dataset
-                yield (path, item)
-            elif isinstance(item, h5py.Group):  # test for group (go down)
-                yield from h5py_dataset_iterator(item, path)
-
-    for path, _ in h5py_dataset_iterator(hdf_file):
-        yield path
 
 
 def _parse_path(dset):
@@ -120,7 +105,7 @@ def concat_h5(path_h5s, output_h5):
             site_name = p.parent.name
             site = h5file.create_group(site_name)
             with h5py.File(p, "r") as f:
-                for dset in _traverse_datasets(f):
+                for dset in load_data._traverse_datasets(f):
                     subject, session, dataset_name = _parse_path(dset)
                     data = f[dset][:]
                     if subject or session:
@@ -210,7 +195,7 @@ def main():
         original_tr = _get_abide_tr(abide_version, site_name)
 
         with h5py.File(path_tmp, "r") as f:
-            for dset in _traverse_datasets(f):
+            for dset in load_data._traverse_datasets(f):
                 if not _check_subject_pass_qc(dset, subjects):
                     continue
                 data = f[dset][:]
