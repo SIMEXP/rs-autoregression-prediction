@@ -9,3 +9,4 @@ pip install --no-index torch-scatter torch-sparse torch-cluster torch-spline-con
 pip install -r code/fmri-autoreg/requirements.txt
 pip install -e code/fmri-autoreg
 pip install -r env/requirements-dev.txt
+pre-commit install
