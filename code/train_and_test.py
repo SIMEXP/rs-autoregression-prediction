@@ -13,7 +13,6 @@ from src.data.load_data import (
     make_input_labels,
     make_seq,
 )
-from src.models.predict_model import predict_horizon
 from src.models.train_model import train
 from src.tools import check_path
 

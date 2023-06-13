@@ -140,9 +140,7 @@ def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
     return [int(s) for s in subjects.tolist()]
 
 
-def _check_subject_pass_qc(dset, subjects, atlas_dimensions):
-    if str(atlas_dimensions) not in dset:
-        return False
+def _check_subject_pass_qc(dset, subjects):
     subject, _, _ = _parse_path(dset)
     if not subject or "connectome" in dset:
         return False
@@ -171,11 +169,6 @@ def main():
         "abide_version",
         help="Select abide1 or abide2",
         choices=["abide1", "abide2"],
-    )
-    parser.add_argument(
-        "atlas_dimensions",
-        help="Select the dimensions you want to compile into a dataset",
-        choices=["122", "197", "325", "444"],
     )
 
     args = parser.parse_args()
@@ -209,9 +202,7 @@ def main():
 
         with h5py.File(path_tmp, "r") as f:
             for dset in load_data._traverse_datasets(f):
-                if not _check_subject_pass_qc(
-                    dset, subjects, args.atlas_dimensions
-                ):
+                if not _check_subject_pass_qc(dset, subjects):
                     continue
                 data = f[dset][:]
                 # resample the time series
