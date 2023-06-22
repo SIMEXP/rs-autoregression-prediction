@@ -72,14 +72,14 @@ TARGET_TR = 2.5
 
 def _parse_path(
     dset: str,
-) -> Tuple[Union(str, None), Union(str, None), Union(str, None)]:
+) -> Tuple[Union[str, None], Union[str, None], Union[str, None]]:
     """Get subject, session, dataset name from a BIDS path.
 
     Args:
         dset (str): h5 dataset path.
 
     Returns:
-        Tuple[Union(str, None), Union(str, None), Union(str, None)]:
+        Tuple[Union[str, None], Union[str, None], Union[str, None]]:
         A tuple containing subject, session, and dataset name.
         The value can be None if it's not present in path.
     """
