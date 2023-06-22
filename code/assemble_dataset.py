@@ -1,6 +1,7 @@
 """Select data based on abide QC results. Save as HDF5."""
 import argparse
 from pathlib import Path
+from typing import List, Tuple, Union
 
 import h5py
 import numpy as np
@@ -69,7 +70,19 @@ tr_mapper = {
 TARGET_TR = 2.5
 
 
-def _parse_path(dset):
+def _parse_path(
+    dset: str,
+) -> Tuple[Union(str, None), Union(str, None), Union(str, None)]:
+    """Get subject, session, dataset name from a BIDS path.
+
+    Args:
+        dset (str): h5 dataset path.
+
+    Returns:
+        Tuple[Union(str, None), Union(str, None), Union(str, None)]:
+        A tuple containing subject, session, and dataset name.
+        The value can be None if it's not present in path.
+    """
     dataset_name = dset.split("/")[-1]
     if "sub" in dataset_name:
         subject = f"sub-{dataset_name.split('sub-')[-1].split('_')[0]}"
@@ -82,7 +95,19 @@ def _parse_path(dset):
     return subject, session, dataset_name
 
 
-def _fetch_h5_group(f, subject, session):
+def _fetch_h5_group(
+    f: h5py.File, subject: str, session: str = None
+) -> h5py.Group:
+    """Get group from a HDF5 file containing a BIDS-ish structure.
+
+    Args:
+        f (h5py.File): HDF5 file object of the connectomes.
+        subject (str): BIDS subject ID includes the entity "sub-".
+        session (str, optional): Session name
+
+    Returns:
+        h5py.Group: H5 group matching the BIDS information
+    """
     if subject not in f:
         return (
             f.create_group(f"{subject}/{session}")
@@ -99,8 +124,16 @@ def _fetch_h5_group(f, subject, session):
         return f[f"{subject}"]
 
 
-def concat_h5(path_h5s, output_h5):
-    """Concatenate connectome h5 files."""
+def concat_h5(path_h5s: Path, output_h5: Path) -> Path:
+    """Concatenate connectome h5 files.
+
+    Args:
+        path_h5s (Path): Paths to HDF5 files to concatenate.
+        output_h5 (Path): Output HDF5 file path.
+
+    Returns:
+        Path: output HDF5 file path, concatenated.
+    """
     with h5py.File(output_h5, "a") as h5file:
         for p in path_h5s:
             site_name = p.parent.name
@@ -117,10 +150,21 @@ def concat_h5(path_h5s, output_h5):
     return output_h5
 
 
-def _resample_tr(data, original_tr):
+def _resample_tr(data: np.ndarray, original_tr: float) -> np.ndarray:
+    """Resample time series data to a set TR.
+
+    Args:
+        data (np.ndarray): the time series data
+        original_tr (float): TR of the original data in seconds
+
+    Returns:
+        np.ndarray: Resampled timeseries data in TR=2.5
+    """
     # standardise to percent signal change
     # data was already detrended.
     data_psc = signal.clean(data, detrend=False, standardize="psc")
+    data_psc /= 100  # make sure the value is between 0 and +-1
+
     # resample data
     if TARGET_TR == original_tr:
         return data_psc
@@ -132,7 +176,19 @@ def _resample_tr(data, original_tr):
     return f(time_stamp_new.T).T
 
 
-def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
+def _get_subjects_passed_qc(
+    qc: pd.DataFrame, abide_dataset_name: str, site_name: str
+) -> List[str]:
+    """Get ABIDE subjects that passed quality control from Urch's work.
+
+    Args:
+        qc (pd.DataFrame): quality control results.
+        abide_dataset_name (str): abide1 or abide2
+        site_name (str): abide site name
+
+    Returns:
+        List[str]: subject ID, passed quality control.
+    """
     site_filter = qc["site_name"] == site_name
     subjects = qc.loc[
         site_filter, field_mappers[abide_dataset_name]["SUB_ID"]
@@ -140,7 +196,16 @@ def _get_subjects_passed_qc(qc, abide_dataset_name, site_name):
     return [int(s) for s in subjects.tolist()]
 
 
-def _check_subject_pass_qc(dset, subjects):
+def _check_subject_pass_qc(dset: str, subjects: List[str]) -> bool:
+    """Check if the current subjects passed quality control.
+
+    Args:
+        dset (str): Current H5 dataset path.
+        subjects (List[str]): List of subjects that passed QC
+
+    Returns:
+        bool: If the current subject passed QC.
+    """
     subject, _, _ = _parse_path(dset)
     if not subject or "connectome" in dset:
         return False
@@ -149,7 +214,16 @@ def _check_subject_pass_qc(dset, subjects):
     return current_sub in subjects
 
 
-def _get_abide_tr(abide_version, site_name):
+def _get_abide_tr(abide_version: str, site_name: str) -> float:
+    """Get ABIDE dataset TR (in milliseconds) in seconds.
+
+    Args:
+        abide_version (str): abide1 or abide2
+        site_name (str): name of abide sites
+
+    Returns:
+        float: TR in seconds
+    """
     original_tr = tr_mapper[abide_version]
     if not isinstance(original_tr, int):
         original_tr = original_tr[site_name]
@@ -183,7 +257,8 @@ def main():
         path_tmp = concat_h5(path_connectomes, path_tmp)
     print("concatenated across site")
 
-    # select subject based on each site, keep time series only and resample
+    # select subject based on each site,
+    # keep time series only and resample
     qc = pd.read_csv(
         f"inputs/connectomes/sourcedata/{abide_version}/{abide_version.upper()}_Pheno_PSM_matched.tsv",
         sep="\t",
@@ -205,7 +280,7 @@ def main():
                 if not _check_subject_pass_qc(dset, subjects):
                     continue
                 data = f[dset][:]
-                # resample the time series
+                # resample the time series,
                 resampled = _resample_tr(data, original_tr)
                 with h5py.File(path_concat, "a") as new_f:
                     new_f.create_dataset(

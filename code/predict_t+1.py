@@ -82,7 +82,7 @@ def main():
         Z_val,
         Y_val,
         losses,
-        checkpoints,
+        _,
     ) = train(params, train_data, verbose=args.verbose)
     np.save(os.path.join(output_dir, "r2_tng.npy"), r2_tng)
     np.save(os.path.join(output_dir, "r2_val.npy"), r2_val)
@@ -91,7 +91,6 @@ def main():
     np.save(os.path.join(output_dir, "pred_val.npy"), Z_val)
     np.save(os.path.join(output_dir, "labels_val.npy"), Y_val)
     np.save(os.path.join(output_dir, "training_losses.npy"), losses)
-    np.save(os.path.join(output_dir, "training_checkpoints.npy"), checkpoints)
 
     model = model.to("cpu")
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
