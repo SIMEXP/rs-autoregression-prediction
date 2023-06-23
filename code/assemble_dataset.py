@@ -161,19 +161,21 @@ def _resample_tr(data: np.ndarray, original_tr: float) -> np.ndarray:
         np.ndarray: Resampled timeseries data in TR=2.5
     """
     # standardise to percent signal change
-    # data was already detrended.
-    data_psc = signal.clean(data, detrend=False, standardize="psc")
-    data_psc /= 100  # make sure the value is between 0 and +-1
+    # data was already detrended and z scored....
 
     # resample data
     if TARGET_TR == original_tr:
-        return data_psc
-    time_stamp_original = np.arange(0, data_psc.shape[0]) * original_tr
-    scan_length_second = data_psc.shape[0] * original_tr
+        return data
+    time_stamp_original = np.arange(0, data.shape[0]) * original_tr
+    scan_length_second = data.shape[0] * original_tr
     n_resampled_timepoints = int(scan_length_second / TARGET_TR)
     time_stamp_new = np.arange(0, n_resampled_timepoints) * TARGET_TR
-    f = interp1d(time_stamp_original.T, data_psc.T, fill_value="extrapolate")
-    return f(time_stamp_new.T).T
+    f = interp1d(time_stamp_original.T, data.T, fill_value="extrapolate")
+    resampled = f(time_stamp_new).T
+
+    # make sure the value is somehow standardised
+    resampled = signal.clean(resampled, detrend=False, standardize=True)
+    return resampled
 
 
 def _get_subjects_passed_qc(
@@ -310,12 +312,16 @@ def test_parse_path():
 
 
 def test_resample_tr():
-    data = np.random.random((198, 122))
+    # time x parcells
+    data = np.random.random((198, 7))
     data_tr3 = _resample_tr(data, 3)
     scan_length_second = 198 * 3
     n_resampled_timepoints = int(scan_length_second / TARGET_TR)
     assert data_tr3.shape[0] == n_resampled_timepoints
-    assert data_tr3.shape[1] == 122
+    assert data_tr3.shape[1] == 7
+    assert (np.std(data_tr3[:, 0]) - 1) < 1.0e-06  # zscore
+
     data_tr25 = _resample_tr(data, TARGET_TR)
-    assert data_tr25.shape[1] == 122
+    assert data_tr25.shape[1] == 7
     assert data_tr25.shape[0] == 198
+    assert (np.std(data_tr25[:, 0]) - 1) < 1.0e-06  # zscore
