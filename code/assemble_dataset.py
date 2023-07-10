@@ -1,5 +1,6 @@
 """Select data based on abide QC results. Save as HDF5."""
 import argparse
+from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple, Union
 
@@ -10,12 +11,31 @@ from nilearn import signal
 from scipy.interpolate import interp1d
 from src.data import load_data
 
-field_mappers = {
-    "abide1": {"site_name": "site_name", "SUB_ID": "SUB_ID"},
-    "abide2": {"site_name": "SITE_ID", "SUB_ID": "SUB_ID"},
+# recode all baseline as zero
+FIELD_MAPPERS = {
+    "abide1": {  # http://fcon_1000.projects.nitrc.org/indi/abide/ABIDE_LEGEND_V1.02.pdf
+        "site_name": {"column": "site_name"},
+        "participant_id": {"column": "SUB_ID"},
+        "sex": {"column": "SEX", "value": {1: 1, 2: 0}},  # male  # female
+        "age": {"column": "AGE_AT_SCAN"},
+        "diagnosis": {
+            "column": "DX_GROUP",
+            "value": {2: 0, 1: 1},  # control  # autism
+        },
+    },
+    "abide2": {  # http://fcon_1000.projects.nitrc.org/indi/abide/ABIDEII_Data_Legend.pdf
+        "site_name": {"column": "SITE_ID"},
+        "participant_id": {"column": "SUB_ID"},
+        "sex": {"column": "SEX", "value": {"male": 1, "female": 0}},
+        "age": {"column": "AGE_AT_SCAN"},
+        "diagnosis": {
+            "column": "DX_GROUP",
+            "value": {"Control": 0, "Autism": 1},  # control  # autism
+        },
+    },
 }
 
-tr_mapper = {
+TR_MAPPERS = {
     "abide1": {
         "Caltech": 2000,
         "CMU_a": 2000,
@@ -180,8 +200,9 @@ def _resample_tr(data: np.ndarray, original_tr: float) -> np.ndarray:
 
 def _get_subjects_passed_qc(
     qc: pd.DataFrame, abide_dataset_name: str, site_name: str
-) -> List[str]:
+) -> dict:
     """Get ABIDE subjects that passed quality control from Urch's work.
+    Also gather metadata
 
     Args:
         qc (pd.DataFrame): quality control results.
@@ -189,13 +210,36 @@ def _get_subjects_passed_qc(
         site_name (str): abide site name
 
     Returns:
-        List[str]: subject ID, passed quality control.
+        dict: subject ID as keys and values: age, sex, diagnosis, site.
     """
     site_filter = qc["site_name"] == site_name
     subjects = qc.loc[
-        site_filter, field_mappers[abide_dataset_name]["SUB_ID"]
-    ].values
-    return [int(s) for s in subjects.tolist()]
+        site_filter,
+        FIELD_MAPPERS[abide_dataset_name]["participant_id"]["column"],
+    ].values.tolist()
+
+    subjects_info = {}
+    for subject in subjects:
+        subject_filter = (
+            qc[FIELD_MAPPERS[abide_dataset_name]["participant_id"]["column"]]
+            == subject
+        )
+        subjects_info[str(subject)] = {"site": site_name.split("_")[0]}
+        for field in ["sex", "age", "diagnosis"]:
+            original_value = qc.loc[
+                subject_filter,
+                FIELD_MAPPERS[abide_dataset_name][field]["column"],
+            ].values.tolist()[0]
+            value_mapper = FIELD_MAPPERS[abide_dataset_name][field].get(
+                "value", False
+            )
+            if value_mapper:
+                subjects_info[str(subject)][field] = value_mapper[
+                    original_value
+                ]
+            else:
+                subjects_info[str(subject)][field] = original_value
+    return subjects_info
 
 
 def _check_subject_pass_qc(dset: str, subjects: List[str]) -> bool:
@@ -212,7 +256,7 @@ def _check_subject_pass_qc(dset: str, subjects: List[str]) -> bool:
     if not subject or "connectome" in dset:
         return False
     else:
-        current_sub = int(subject.split("sub-")[-1])
+        current_sub = str(subject.split("sub-")[-1])
     return current_sub in subjects
 
 
@@ -226,7 +270,7 @@ def _get_abide_tr(abide_version: str, site_name: str) -> float:
     Returns:
         float: TR in seconds
     """
-    original_tr = tr_mapper[abide_version]
+    original_tr = TR_MAPPERS[abide_version]
     if not isinstance(original_tr, int):
         original_tr = original_tr[site_name]
     original_tr /= 1000
@@ -265,14 +309,15 @@ def main():
         f"inputs/connectomes/sourcedata/{abide_version}/{abide_version.upper()}_Pheno_PSM_matched.tsv",
         sep="\t",
     )
-    qc["site_name"] = qc[field_mappers[abide_version]["site_name"]].replace(
-        {"ABIDEII-": ""}, regex=True
-    )
+    qc["site_name"] = qc[
+        FIELD_MAPPERS[abide_version]["site_name"]["column"]
+    ].replace({"ABIDEII-": ""}, regex=True)
     all_sites = qc["site_name"].unique()
 
     for site_name in all_sites:
         print(site_name)
-        subjects = _get_subjects_passed_qc(qc, abide_version, site_name)
+        subjects_info = _get_subjects_passed_qc(qc, abide_version, site_name)
+        subjects = list(subjects_info.keys())
         if len(subjects) == 0:
             continue
         original_tr = _get_abide_tr(abide_version, site_name)
@@ -281,15 +326,40 @@ def main():
             for dset in load_data._traverse_datasets(f):
                 if not _check_subject_pass_qc(dset, subjects):
                     continue
+                # resample the time series
                 data = f[dset][:]
-                # resample the time series,
                 resampled = _resample_tr(data, original_tr)
+                dset_name = dset.split("/")[-1]
+                participant_id = dset_name.split("_")[0].split("sub-")[-1]
+                dset_name = (
+                    f"site-{site_name}/sub-{participant_id}/{dset_name}"
+                )
+                # save data
                 with h5py.File(path_concat, "a") as new_f:
-                    new_f.create_dataset(
-                        f"site-{site_name}_{dset.split('/')[-1]}",
-                        data=resampled,
-                    )
-    # remove the temporary file
+                    new_f.create_dataset(dset_name, data=resampled)
+
+        # populate phenotype data
+        with h5py.File(path_concat, "a") as new_f:
+            for participant_id in subjects_info:
+                node = f"site-{site_name}/sub-{participant_id}"
+                if node in new_f:
+                    dset_sub = new_f[node]
+                    phenotype = subjects_info[participant_id]
+                    for field in phenotype:
+                        dset_sub.attrs.create(
+                            name=field, data=phenotype[field]
+                        )
+    # dataset metadata
+    with h5py.File(path_concat, "a") as f:
+        f.attrs["dataset_name"] = abide_version
+        f.attrs["diagnosis_name"] = "autism"
+        f.attrs["diagnosis_code_control"] = 0
+        f.attrs["diagnosis_code_patient"] = 1
+        f.attrs["sex_male"] = 1
+        f.attrs["sex_female"] = 0
+        f.attrs["complied_date"] = str(datetime.today())
+
+    # delete the temporary file
     path_tmp.unlink()
 
 
