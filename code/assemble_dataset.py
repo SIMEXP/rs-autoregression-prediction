@@ -10,6 +10,7 @@ import pandas as pd
 from nilearn import signal
 from scipy.interpolate import interp1d
 from src.data import load_data
+from tqdm import tqdm
 
 # recode all baseline as zero
 FIELD_MAPPERS = {
@@ -159,7 +160,7 @@ def concat_h5(path_h5s: Path, output_h5: Path) -> Path:
             site_name = p.parent.name
             site = h5file.create_group(site_name)
             with h5py.File(p, "r") as f:
-                for dset in load_data._traverse_datasets(f):
+                for dset in tqdm(load_data._traverse_datasets(f)):
                     subject, session, dataset_name = _parse_path(dset)
                     data = f[dset][:]
                     if subject or session:
@@ -224,6 +225,10 @@ def _get_subjects_passed_qc(
             qc[FIELD_MAPPERS[abide_dataset_name]["participant_id"]["column"]]
             == subject
         )
+        if abide_dataset_name == "abide1":
+            # zero padded
+            subject = f"{subject:07}"
+
         subjects_info[str(subject)] = {"site": site_name.split("_")[0]}
         for field in ["sex", "age", "diagnosis"]:
             original_value = qc.loc[
@@ -256,7 +261,7 @@ def _check_subject_pass_qc(dset: str, subjects: List[str]) -> bool:
     if not subject or "connectome" in dset:
         return False
     else:
-        current_sub = str(subject.split("sub-")[-1])
+        current_sub = subject.split("sub-")[-1]
     return current_sub in subjects
 
 
@@ -278,89 +283,82 @@ def _get_abide_tr(abide_version: str, site_name: str) -> float:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=(
-            "Concatenate abide sites into one dataset, select based on QC,"
-            "Resample the time series to TR = 2.5."
-        ),
-    )
-    parser.add_argument(
-        "abide_version",
-        help="Select abide1 or abide2",
-        choices=["abide1", "abide2"],
-    )
+    for abide_version in FIELD_MAPPERS:
+        path_connectomes = Path(
+            f"inputs/connectomes/sourcedata/{abide_version}/"
+        ).glob("*_connectomes-0.*/*/atlas-MIST_desc-simple+gsr.h5")
+        path_concat = "inputs/connectomes/processed_connectomes.h5"
+        path_tmp = Path(f"{abide_version}_tmp.h5")
+        if not Path(path_tmp).exists():
+            path_tmp = concat_h5(path_connectomes, path_tmp)
+        print("concatenated across site")
 
-    args = parser.parse_args()
-    abide_version = args.abide_version
+        # select subject based on each site,
+        # keep time series only and resample
+        qc = pd.read_csv(
+            f"inputs/connectomes/sourcedata/{abide_version}/{abide_version.upper()}_Pheno_PSM_matched.tsv",
+            sep="\t",
+        )
+        qc["site_name"] = qc[
+            FIELD_MAPPERS[abide_version]["site_name"]["column"]
+        ].replace({"ABIDEII-": ""}, regex=True)
+        all_sites = qc["site_name"].unique()
+        print(f"found {qc.shape[0]} subjects passed QC.")
 
-    path_connectomes = Path(
-        f"inputs/connectomes/sourcedata/{abide_version}/{abide_version}_connectomes-0.2.0/"
-    ).glob("*/atlas-MIST_desc-simple+gsr.h5")
-    path_concat = f"inputs/connectomes/{abide_version}.h5"
-    path_tmp = Path("tmp.h5")
-    if not Path(path_tmp).exists():
-        path_tmp = concat_h5(path_connectomes, path_tmp)
-    print("concatenated across site")
+        for site_name in all_sites:
+            print(site_name)
+            subjects_info = _get_subjects_passed_qc(
+                qc, abide_version, site_name
+            )
+            subjects = list(subjects_info.keys())
+            if len(subjects) == 0:
+                print("found no valid subjects.")
+                continue
+            original_tr = _get_abide_tr(abide_version, site_name)
 
-    # select subject based on each site,
-    # keep time series only and resample
-    qc = pd.read_csv(
-        f"inputs/connectomes/sourcedata/{abide_version}/{abide_version.upper()}_Pheno_PSM_matched.tsv",
-        sep="\t",
-    )
-    qc["site_name"] = qc[
-        FIELD_MAPPERS[abide_version]["site_name"]["column"]
-    ].replace({"ABIDEII-": ""}, regex=True)
-    all_sites = qc["site_name"].unique()
+            with h5py.File(path_tmp, "r") as f:
+                for dset in tqdm(load_data._traverse_datasets(f)):
+                    if not _check_subject_pass_qc(dset, subjects):
+                        continue
+                    # resample the time series
+                    data = f[dset][:]
+                    resampled = _resample_tr(data, original_tr)
+                    dset_name = dset.split("/")[-1]
+                    participant_id = dset_name.split("_")[0].split("sub-")[-1]
+                    dset_name = f"{abide_version}_site-{site_name}/sub-{participant_id}/{dset_name}"
+                    # save data
+                    with h5py.File(path_concat, "a") as new_f:
+                        new_f.create_dataset(dset_name, data=resampled)
 
-    for site_name in all_sites:
-        print(site_name)
-        subjects_info = _get_subjects_passed_qc(qc, abide_version, site_name)
-        subjects = list(subjects_info.keys())
-        if len(subjects) == 0:
-            continue
-        original_tr = _get_abide_tr(abide_version, site_name)
+            # populate phenotype data
+            with h5py.File(path_concat, "a") as new_f:
+                for participant_id in tqdm(subjects_info):
+                    node = f"{abide_version}_site-{site_name}/sub-{participant_id}"
+                    if node in new_f:
+                        print("phenotype data")
+                        dset_sub = new_f[node]
+                        phenotype = subjects_info[participant_id]
+                        for field in phenotype:
+                            dset_sub.attrs.create(
+                                name=field, data=phenotype[field]
+                            )
 
-        with h5py.File(path_tmp, "r") as f:
-            for dset in load_data._traverse_datasets(f):
-                if not _check_subject_pass_qc(dset, subjects):
-                    continue
-                # resample the time series
-                data = f[dset][:]
-                resampled = _resample_tr(data, original_tr)
-                dset_name = dset.split("/")[-1]
-                participant_id = dset_name.split("_")[0].split("sub-")[-1]
-                dset_name = (
-                    f"site-{site_name}/sub-{participant_id}/{dset_name}"
-                )
-                # save data
-                with h5py.File(path_concat, "a") as new_f:
-                    new_f.create_dataset(dset_name, data=resampled)
+            # dataset metadata
+            with h5py.File(path_concat, "a") as f:
+                node_site = f"{abide_version}_site-{site_name}"
+                if node in f:
+                    print("dataset meta data")
+                    node_site = f[node_site]
+                    node_site.attrs["dataset_name"] = abide_version
+                    node_site.attrs["diagnosis_name"] = "autism"
+                    node_site.attrs["diagnosis_code_control"] = 0
+                    node_site.attrs["diagnosis_code_patient"] = 1
+                    node_site.attrs["sex_male"] = 1
+                    node_site.attrs["sex_female"] = 0
+                    node_site.attrs["complied_date"] = str(datetime.today())
 
-        # populate phenotype data
-        with h5py.File(path_concat, "a") as new_f:
-            for participant_id in subjects_info:
-                node = f"site-{site_name}/sub-{participant_id}"
-                if node in new_f:
-                    dset_sub = new_f[node]
-                    phenotype = subjects_info[participant_id]
-                    for field in phenotype:
-                        dset_sub.attrs.create(
-                            name=field, data=phenotype[field]
-                        )
-    # dataset metadata
-    with h5py.File(path_concat, "a") as f:
-        f.attrs["dataset_name"] = abide_version
-        f.attrs["diagnosis_name"] = "autism"
-        f.attrs["diagnosis_code_control"] = 0
-        f.attrs["diagnosis_code_patient"] = 1
-        f.attrs["sex_male"] = 1
-        f.attrs["sex_female"] = 0
-        f.attrs["complied_date"] = str(datetime.today())
-
-    # delete the temporary file
-    path_tmp.unlink()
+        # delete the temporary file
+        # path_tmp.unlink()
 
 
 if __name__ == "__main__":
