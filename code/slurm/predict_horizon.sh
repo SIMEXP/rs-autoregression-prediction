@@ -11,5 +11,5 @@ cd /lustre03/project/6003287/${USER}/rs-autoregression-prediction
 
 python "code/predict_t+1.py" \
     -o outputs/predict_horizon \
-    -p code/parameters/feature_stability.json \
-    -v 2
+    -p code/parameters/prototype.json \
+    -v 1

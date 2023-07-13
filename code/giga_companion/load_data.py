@@ -133,8 +133,10 @@ def load_h5_data_path(
             if data_filter is None or re.search(data_filter, dset):
                 data_list.append(dset)
     if shuffle and data_list:
-        rng = np.random.default_rng()
-        data_list = [rng.shuffle(d) for d in data_list]
+        import random
+
+        random.seed(42)
+        random.shuffle(data_list)
     return data_list
 
 

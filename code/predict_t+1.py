@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 import os
 import pickle as pk
 import re
@@ -54,12 +55,12 @@ def main():
     os.makedirs(output_dir)
 
     # load data
-    with h5py.File(params["data_files"], "r") as f:
+    with h5py.File(params["data_file"], "r") as f:
         datasets = f.attrs["dataset_list"].tolist()
 
     # ABIDE 1
     tng_dset, val_dset = split_data_by_site(
-        params["data_files"],
+        params["data_file"],
         datasets=[d for d in datasets if "abide1" in d],
         test_set=0.2,
         split_type=None,
@@ -68,14 +69,22 @@ def main():
 
     # ABIDE 2
     test_dset = load_h5_data_path(
-        params["data_files"],
+        params["data_file"],
         "abide2.*/*/sub-.*desc-197.*timeseries",
         shuffle=True,
     )
 
-    tng_data = load_data(params["data_files"], tng_dset, dtype="data")
-    val_data = load_data(params["data_files"], val_dset, dtype="data")
-    test_data = load_data(params["data_files"], test_dset, dtype="data")
+    data_reference = {
+        "train": tng_dset,
+        "validation": val_dset,
+        "test": test_dset,
+    }
+    with open(Path(output_dir) / "train_test_split.json", "w") as f:
+        json.dump(data_reference, f, indent=2)
+
+    tng_data = load_data(params["data_file"], tng_dset, dtype="data")
+    val_data = load_data(params["data_file"], val_dset, dtype="data")
+    test_data = load_data(params["data_file"], test_dset, dtype="data")
 
     X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
         tng_data,
@@ -139,8 +148,8 @@ def main():
         model=model,
         seq_length=params["seq_length"],
         horizon=HORIZON,
-        data_file=params["test_data_file"],
-        task_filter=params["test_task_filter"],
+        data_file=params["data_file"],
+        task_filter=params["data_filter"],
         batch_size=batch_size,
         stride=1,
         standardize=False,
