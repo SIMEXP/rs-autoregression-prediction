@@ -229,7 +229,10 @@ def _get_subjects_passed_qc(
             # zero padded
             subject = f"{subject:07}"
 
-        subjects_info[str(subject)] = {"site": site_name.split("_")[0]}
+        subjects_info[str(subject)] = {
+            "dataset": abide_dataset_name,
+            "site": site_name,
+        }
         for field in ["sex", "age", "diagnosis"]:
             original_value = qc.loc[
                 subject_filter,
@@ -283,6 +286,7 @@ def _get_abide_tr(abide_version: str, site_name: str) -> float:
 
 
 def main():
+    site_list = []
     for abide_version in FIELD_MAPPERS:
         path_connectomes = Path(
             f"inputs/connectomes/sourcedata/{abide_version}/"
@@ -347,6 +351,7 @@ def main():
             with h5py.File(path_concat, "a") as f:
                 node_site = f"{abide_version}_site-{site_name}"
                 if node in f:
+                    site_list.append(node_site)
                     print("dataset meta data")
                     node_site = f[node_site]
                     node_site.attrs["dataset_name"] = abide_version
@@ -355,8 +360,11 @@ def main():
                     node_site.attrs["diagnosis_code_patient"] = 1
                     node_site.attrs["sex_male"] = 1
                     node_site.attrs["sex_female"] = 0
-                    node_site.attrs["complied_date"] = str(datetime.today())
 
+        print("add full dataset list to attribute")
+        with h5py.File(path_concat, "a") as f:
+            f.attrs["dataset_list"] = site_list
+            f.attrs["complied_date"] = str(datetime.today())
         # delete the temporary file
         # path_tmp.unlink()
 

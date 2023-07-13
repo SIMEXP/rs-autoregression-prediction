@@ -2,17 +2,20 @@ import argparse
 import csv
 import os
 import pickle as pk
+import re
 from math import ceil
 from pathlib import Path
+from typing import List, Tuple, Union
 
+import h5py
 import numpy as np
-from sklearn.metrics import r2_score
-from src.data.load_data import (
+from giga_companion.load_data import (
     load_data,
-    load_params,
-    make_input_labels,
-    make_seq,
+    load_h5_data_path,
+    split_data_by_site,
 )
+from sklearn.metrics import r2_score
+from src.data.load_data import load_params, make_input_labels, make_seq
 from src.models.predict_model import predict_horizon
 from src.models.train_model import train
 from src.tools import check_path
@@ -44,22 +47,35 @@ def main():
 
     params = load_params(args.param)
     batch_size = params["batch_size"] if "batch_size" in params else 100
-    standardize = params["standardize"] if "standardize" in params else False
     compute_edge_index = params["model"] == "Chebnet"
     thres = params["edge_index_thres"] if compute_edge_index else None
     output_dir = args.output_dir
     output_dir = check_path(output_dir)
     os.makedirs(output_dir)
 
-    tng_data = load_data(
-        params["tng_data_file"], params["tng_task_filter"], standardize
+    # load data
+    with h5py.File(params["data_files"], "r") as f:
+        datasets = f.attrs["dataset_list"].tolist()
+
+    # ABIDE 1
+    tng_dset, val_dset = split_data_by_site(
+        params["data_files"],
+        datasets=[d for d in datasets if "abide1" in d],
+        test_set=0.2,
+        split_type=None,
+        data_filter="abide1.*/*/sub-.*desc-197.*timeseries",
     )
-    val_data = load_data(
-        params["val_data_file"], params["val_task_filter"], standardize
+
+    # ABIDE 2
+    test_dset = load_h5_data_path(
+        params["data_files"],
+        "abide2.*/*/sub-.*desc-197.*timeseries",
+        shuffle=True,
     )
-    test_data = load_data(
-        params["test_data_file"], params["test_task_filter"], standardize
-    )
+
+    tng_data = load_data(params["data_files"], tng_dset, dtype="data")
+    val_data = load_data(params["data_files"], val_dset, dtype="data")
+    test_data = load_data(params["data_files"], test_dset, dtype="data")
 
     X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
         tng_data,
@@ -118,6 +134,7 @@ def main():
     np.save(os.path.join(output_dir, "pred_test.npy"), Z_test)
     np.save(os.path.join(output_dir, "labels_test.npy"), Y_test)
 
+    # generate feature using all the data
     r2, Z, Y = predict_horizon(
         model=model,
         seq_length=params["seq_length"],
@@ -128,7 +145,6 @@ def main():
         stride=1,
         standardize=False,
     )
-
     np.save(os.path.join(output_dir, f"r2_horizon-{HORIZON}.npy"), r2)
     np.save(os.path.join(output_dir, f"Z_horizon-{HORIZON}.npy"), Z)
     np.save(os.path.join(output_dir, f"Y_horizon-{HORIZON}.npy"), Y)
