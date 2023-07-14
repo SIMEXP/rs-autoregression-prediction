@@ -51,7 +51,9 @@ def main():
     output_dir = check_path(output_dir)
     os.makedirs(output_dir)
 
-    model_path = args.model if args.model.isfile else args.model / "model.pkl"
+    model_path = (
+        args.model if args.model.exists() else args.model / "model.pkl"
+    )
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
