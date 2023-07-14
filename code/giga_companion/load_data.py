@@ -28,24 +28,39 @@ def split_data_by_site(
             shuffle everything.
         data_filter (Union[str, None])): Regex pattern to look for
             suitable data, such as the right `desc` field for atlas,
-            e.g., "sub-.*desc-197.*timeseries".
+            e.g., "*/*/sub-.*desc-197.*timeseries".
 
     Returns:
         Tuple[List[np.ndarray]]: training data and testing data.
     """
+    if data_filter.split("/") != 3:
+        raise ValueError(
+            "The `data_filter` is not the correct format. It should be "
+            "a regex pattern of with three parts, based on the h5 file,"
+            " i.e. '<dataset>/<subject>/<timeseires>', so we can parse "
+            f"it for all use cases. Current input: {data_filter}"
+        )
     if split_type == "between_site":
+        # get all the data
+        tmp_data_list = load_h5_data_path(
+            path=path, data_filter=data_filter, shuffle=False
+        )
         # count number of sites
+        all_datasets = [d.split("/")[1] for d in tmp_data_list]
+        unique_datasets = set(all_datasets)
+        datasets = list(unique_datasets)
         # train test split on the number of sites
         train, test = train_test_split(
             datasets, test_size=test_set, random_state=42
         )
         # concat file based on these info
+        data_filter = data_filter.split("/")[-1]
         tng_data, test_data = [], []
         for i, split in enumerate([train, test]):
             for dset in split:
-                data_filter = data_filter.format(dataset=dset)
+                cur_site_filter = f"{dset}/*/{data_filter}"
                 data_list = load_h5_data_path(
-                    path=path, task_filter=data_filter, shuffle=True
+                    path=path, task_filter=cur_site_filter, shuffle=True
                 )
                 if i == 0:
                     tng_data += data_list
