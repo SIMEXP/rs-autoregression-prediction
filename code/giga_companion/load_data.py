@@ -98,7 +98,7 @@ def load_data(
     h5dset_path: Union[List[str], str],
     dtype: str = "data",
 ) -> List[Union[np.ndarray, str, int, float]]:
-    """_summary_
+    """Load time series or phenotype data from the hdf5 files.
 
     Args:
         path (Union[Path, str]): Path to the hdf5 file.
