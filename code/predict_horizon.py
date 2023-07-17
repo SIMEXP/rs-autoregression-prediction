@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import torch
-from giga_companion import load_data
+from giga_companion.load_data import load_data
 from src.data.load_data import load_params
 from src.models.predict_model import predict_horizon
 from src.tools import check_path, load_model
@@ -102,9 +102,7 @@ def main():
         )
         # save the original output to a h5 file
         with h5py.File(output_metric_path, "a") as f:
-            for value, key in zip(
-                [r2, Z, Y], ["r2map", "Z", "Y"], strict=True
-            ):
+            for value, key in zip([r2, Z, Y], ["r2map", "Z", "Y"]):
                 horizon_path = h5_dset_path.replace("timeseries", key)
                 f[horizon_path] = value
 
@@ -112,12 +110,15 @@ def main():
         df = pd.DataFrame(
             {
                 "r2mean": [r2.mean()],
-                "sex": [
-                    load_data(params["data_file"], h5_dset_path, dtype="sex")
-                ],
-                "age": [
-                    load_data(params["data_file"], h5_dset_path, dtype="age")
-                ],
+                "sex": load_data(
+                    params["data_file"], h5_dset_path, dtype="sex"
+                ),
+                "age": load_data(
+                    params["data_file"], h5_dset_path, dtype="age"
+                ),
+                "diagnosis": load_data(
+                    params["data_file"], h5_dset_path, dtype="diagnosis"
+                ),
                 "site": [site_dataset_name],
             }
         )
