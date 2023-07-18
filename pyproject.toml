@@ -14,11 +14,13 @@ combine_as_imports = true
 
 [tool.ruff]
 exclude = [
+    "code/*.ipynb",
     "**/__init__.py",
     "**/tests/*",
     "*build/",
     "code/fmri-autoreg",
 ]
+
 ignore = [
     "E501",
     "F401",

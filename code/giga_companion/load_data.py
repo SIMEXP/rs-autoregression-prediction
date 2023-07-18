@@ -33,7 +33,7 @@ def split_data_by_site(
     Returns:
         Tuple[List[np.ndarray]]: training data and testing data.
     """
-    if data_filter.split("/") != 3:
+    if len(data_filter.split("/")) != 3:
         raise ValueError(
             "The `data_filter` is not the correct format. It should be "
             "a regex pattern of with three parts, based on the h5 file,"

@@ -3,7 +3,7 @@
     "atlas": "inputs/atlas/tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_atlas-MIST_res-dataset_desc-197_dseg.nii.gz",
     "data_file": "inputs/connectomes/processed_connectomes.h5",
     "data_filter": "sub-.*desc-197.*timeseries",
-    "train_test_split": ["within_sites", "between_sites"],
+    "train_test_split": "within_sites",
     "test_size": 0.2,
     "seq_length": 15,
     "time_stride": 1,

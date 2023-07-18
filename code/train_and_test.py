@@ -61,7 +61,7 @@ def main():
         params["data_file"],
         datasets=[d for d in datasets if "abide1" in d],
         test_set=0.2,
-        split_type=None,
+        split_type=params["train_test_split"],
         data_filter="abide1.*/*/sub-.*desc-197.*timeseries",
     )
 
