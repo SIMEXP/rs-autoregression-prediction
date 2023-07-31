@@ -2,13 +2,13 @@
 import argparse
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
 import pandas as pd
 from nilearn import signal
-from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
 from src.data import load_data
 from tqdm import tqdm
 
@@ -88,7 +88,7 @@ TR_MAPPERS = {
     },
 }
 
-TARGET_TR = 2.5
+TARGET_TR = None
 
 
 def _parse_path(
@@ -171,27 +171,30 @@ def concat_h5(path_h5s: Path, output_h5: Path) -> Path:
     return output_h5
 
 
-def _resample_tr(data: np.ndarray, original_tr: float) -> np.ndarray:
+def _resample_tr(
+    data: np.ndarray, original_tr: float, target_tr: Optional[int]
+) -> np.ndarray:
     """Resample time series data to a set TR.
 
     Args:
         data (np.ndarray): the time series data
         original_tr (float): TR of the original data in seconds
+        target_tr (int, None): target TR in ms. If None, no resampling.
 
     Returns:
-        np.ndarray: Resampled timeseries data in TR=2.5
+        np.ndarray: Resampled timeseries data to a given TR.
     """
     # standardise to percent signal change
     # data was already detrended and z scored....
 
     # resample data
-    if TARGET_TR == original_tr:
+    if target_tr == original_tr or target_tr is None:
         return data
     time_stamp_original = np.arange(0, data.shape[0]) * original_tr
     scan_length_second = data.shape[0] * original_tr
-    n_resampled_timepoints = int(scan_length_second / TARGET_TR)
-    time_stamp_new = np.arange(0, n_resampled_timepoints) * TARGET_TR
-    f = interp1d(time_stamp_original.T, data.T, fill_value="extrapolate")
+    n_resampled_timepoints = int(scan_length_second / target_tr)
+    time_stamp_new = np.arange(0, n_resampled_timepoints) * target_tr
+    f = UnivariateSpline(time_stamp_original.T, data.T)
     resampled = f(time_stamp_new).T
 
     # make sure the value is somehow standardised
@@ -324,12 +327,12 @@ def main():
                 for dset in tqdm(load_data._traverse_datasets(f)):
                     if not _check_subject_pass_qc(dset, subjects):
                         continue
-                    # resample the time series
-                    data = f[dset][:]
-                    resampled = _resample_tr(data, original_tr)
                     dset_name = dset.split("/")[-1]
                     participant_id = dset_name.split("_")[0].split("sub-")[-1]
                     dset_name = f"{abide_version}_site-{site_name}/sub-{participant_id}/{dset_name}"
+                    # resample the time series
+                    data = f[dset][:]
+                    resampled = _resample_tr(data, original_tr, TARGET_TR)
                     # save data
                     with h5py.File(path_concat, "a") as new_f:
                         new_f.create_dataset(dset_name, data=resampled)
