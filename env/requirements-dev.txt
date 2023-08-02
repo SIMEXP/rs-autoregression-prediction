@@ -4,3 +4,4 @@ pre-commit
 isort
 codespell
 ruff==0.0.251
+seabron
