@@ -33,7 +33,7 @@ if __name__ == "__main__":
         shuffle=True,
     )
 
-    # get data
+    # get connectomes
     cm = ConnectivityMeasure(kind="correlation", vectorize=True)
     tng_data = cm.fit_transform(
         [load_data(data_file, d, dtype="data")[0] for d in abide1]
