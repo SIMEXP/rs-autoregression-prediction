@@ -105,6 +105,14 @@ def main():
             for value, key in zip([r2, Z, Y], ["r2map", "Z", "Y"]):
                 horizon_path = h5_dset_path.replace("timeseries", key)
                 f[horizon_path] = value
+            # save pneotype info as attributes of the subject
+            subject_path = ("/").join(horizon_path.split("/")[:-1])
+            f[subject_path].attrs["r2mean"] = r2.mean().mean()
+            f[subject_path].attrs["site"] = site_dataset_name
+            for att in ["sex", "age", "diagnosis"]:
+                f[subject_path].attrs[att] = load_data(
+                    params["data_file"], h5_dset_path, dtype=att
+                )
 
         # save mean r2 in a dataframe
         df = pd.DataFrame(
