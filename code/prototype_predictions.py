@@ -1,6 +1,9 @@
 """
 Execute at the root of the repo, not in the code directory.
 """
+import argparse
+from pathlib import Path
+
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,11 +18,23 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
 data_file = "inputs/connectomes/processed_connectomes.h5"
-feature_t1_file = "outputs/prototype_predict_horizon_within-sites_original-tr/prototype_train_and_test_within-sites_original-tr_horizon-1.h5"
-feature_r2_file = "outputs/prototype_predict_horizon_within-sites_original-tr/prototype_train_and_test_within-sites_original-tr_horizon-1.tsv"
-
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model_dir", "-m", type=Path, help="model output directory"
+    )
+    parser.add_argument(
+        "--horizon_dir", "-p", type=Path, help="Path to horizon predictiondir."
+    )
+    args = parser.parse_args()
+
+    (args.horizon_dir / "figures").mkdir(exist_ok=True)
+
+    model_name = args.model_dir.name
+
+    feature_t1_file = args.horizon_dir / f"{model_name}_horizon-1.h5"
+
     # ABIDE 1
     abide1 = load_h5_data_path(
         data_file,
@@ -72,19 +87,16 @@ if __name__ == "__main__":
     )
     # r2 map
     print("r2 map")
-    r2mean = pd.read_csv(
-        feature_r2_file,
-        index_col=0,
-        sep="\t",
-    )
     r2_path = load_h5_data_path(feature_t1_file, "r2map")
     tng_path = [p for p in r2_path if "abide1" in p]
     test_path = [p for p in r2_path if "abide2" in p]
-    tng_index = [p.split("/")[-1].split("_atlas")[0] for p in tng_path]
-    test_index = [p.split("/")[-1].split("_atlas")[0] for p in test_path]
 
-    tng_label = r2mean.loc[tng_index, "diagnosis"].values.tolist()
-    test_label = r2mean.loc[test_index, "diagnosis"].values.tolist()
+    tng_label = [
+        load_data(feature_t1_file, p, dtype="diagnosis") for p in tng_path
+    ]
+    test_label = [
+        load_data(feature_t1_file, p, dtype="diagnosis") for p in test_path
+    ]
 
     tng_data = [load_data(feature_t1_file, p, dtype="data") for p in tng_path]
     tng_data = np.concatenate(tng_data).squeeze()
@@ -156,4 +168,4 @@ if __name__ == "__main__":
     plt.ylim(0.3, 0.9)
     plt.hlines(0.5, -0.3, 3, linestyles="dashed", colors="black")
     plt.tight_layout()
-    plt.savefig("outputs/figures/simple_classifiers.png")
+    plt.savefig(args.horizon_dir / "figures/simple_classifiers.png")

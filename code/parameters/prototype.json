@@ -16,7 +16,7 @@
   "bn_momentum": 0.1,
   "use_bn": true,
   "nb_epochs": 100,
-  "batch_size": 100,
+  "batch_size": 50,
   "lr": 0.01,
   "lr_patience": 4,
   "lr_thres": 0.001,

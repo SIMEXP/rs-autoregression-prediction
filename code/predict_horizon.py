@@ -112,7 +112,7 @@ def main():
             for att in ["sex", "age", "diagnosis"]:
                 f[subject_path].attrs[att] = load_data(
                     params["data_file"], h5_dset_path, dtype=att
-                )
+                )[0]
 
         # save mean r2 in a dataframe
         df = pd.DataFrame(
