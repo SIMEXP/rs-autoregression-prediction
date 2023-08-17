@@ -17,33 +17,63 @@ from torch.utils.data import DataLoader
 from torch_geometric.nn import ChebConv
 from tqdm.auto import tqdm
 
+N_EPOCHS = 40
 NUM_WORKERS = 2
 BATCH_SIZE = 15
+MAX_TIME_SEQ = 100
+LEARNING_RATE = 0.1
+LEARNING_RATE_PATIENCE = 4
+LEARNING_RATE_THRES = 0.01
+WEIGHT_DECAY = 0
+DROP_OUT = 0.2
+
+
+def zero_padding(conv_layers, maxium_time_sequence):
+    if conv_layers.shape[0] < maxium_time_sequence:
+        conv_layers = np.pad(
+            conv_layers,
+            ((0, maxium_time_sequence - conv_layers.shape[0]), (0, 0), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+    else:
+        conv_layers = conv_layers[:maxium_time_sequence, ::]
+    return conv_layers
 
 
 class BinaryPrediction(nn.Module):
-    def __init__(self, dropout, n_parcels, FK, bn_momentum=0.1):
+    def __init__(
+        self, dropout, n_parcels, FK, batch_size, n_time_seq, bn_momentum=0.1
+    ):
         super().__init__()
         FK = string_to_list(FK)
         F = FK[::2]
-        n_layers = len(F)
+        # n_layers = len(F)
+        n_latent_features = F[-1]  # using the last layer only for now
+        fc_out = 128
+        kernel_size = 3
+        stride = 2
+        max_pool_output = np.ceil((fc_out - kernel_size - 1 - 1) / stride + 1)
+        max_pool_output = int(max_pool_output)
+
         layers = [
             nn.Linear(
-                n_parcels * n_layers * sum(F) * batch_size,
-                n_parcels * batch_size,
+                n_parcels * n_latent_features,
+                fc_out,
             ),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.BatchNorm1d(n_parcels * batch_size, momentum=bn_momentum),
-            nn.MaxPool3d(n_parcels * batch_size),
-            nn.Dropout(dropout),
-            nn.Linear(n_parcels * batch_size, 1),  # output
+            nn.BatchNorm1d(n_time_seq, momentum=bn_momentum),
+            nn.MaxPool1d(kernel_size, stride=stride),
+            nn.Linear(max_pool_output, 1),  # output
             nn.Sigmoid(),
         ]
         self.layers = nn.ModuleList(layers)
 
     def forward(self, x):
-        return self.layers(x).view(x.shape[0], x.shape[1])
+        for layer in self.layers:
+            x = layer(x)
+        return x.view((x.shape[0], x.shape[1]))
 
     def predict(self, x):
         x = torch.tensor(
@@ -100,10 +130,9 @@ if __name__ == "__main__":
     model_path = "../outputs/prototype_train_and_test_within-sites_original-tr/model.pkl"
 
     # get the latent feature per subject
-
-    # load data
     datasets = {}
     for abide in ["abide1", "abide2"]:
+        # load data
         data_dset = load_h5_data_path(
             "../" + params["data_file"],
             f"{abide}.*/*/sub-.*desc-197.*timeseries",
@@ -117,7 +146,9 @@ if __name__ == "__main__":
         )
 
         X_lat_feat = []
-        for ts in tqdm(data_list):
+        Y = []
+        # get the convolution layer features per subject
+        for ts, label in tqdm(zip(data_list, labels)):
             X = make_input_labels(
                 [ts],
                 [],
@@ -130,11 +161,12 @@ if __name__ == "__main__":
                 0
             ]  # just one subject and the X
 
-            # register the hooks
+            # do I need to reload the model every time?
             model = load_model(model_path)
             if isinstance(model, torch.nn.Module):
                 model.to(torch.device(device)).eval()
 
+            # register the hooks to the pretrain model
             save_output = SaveOutput()
             hook_handles = []
             for _, module in model.named_modules():
@@ -149,86 +181,106 @@ if __name__ == "__main__":
             #         module_output_to_numpy(o)
             #         for o in save_output.outputs
             #     ]
-            # )
+            # )  # get all layers
             conv_layers = module_output_to_numpy(
                 save_output.outputs[-1]
-            )  # take the last layer
+            )  # take the last layer for now
+            # use the first 100 time points, pad with zero if not long
+            # enough
+            conv_layers = zero_padding(conv_layers, MAX_TIME_SEQ)
+            # keep the first dimension (time), flatten it
+            conv_layers = conv_layers.reshape(conv_layers.shape[0], -1)
+
             X_lat_feat.append(conv_layers)
-        datasets[abide] = Dataset(X=X_lat_feat, Y=labels)
+            Y.append(np.repeat([label], MAX_TIME_SEQ, axis=0))
+        datasets[abide] = Dataset(X=X_lat_feat, Y=Y)
 
     # format latent features and prediction labels
     tng_dataloader = DataLoader(
         datasets["abide1"],
         batch_size=BATCH_SIZE,
-        shuffle=True,
+        shuffle=False,
         drop_last=True,
         num_workers=NUM_WORKERS,
     )
-    val_dataloader = DataLoader(
-        datasets["abide2"],
+    # just evaluate the full abide 2 at each epoch
+    val_inputs = torch.stack(
+        [torch.tensor(d) for d in datasets["abide2"].inputs]
+    )
+    val_labels = torch.stack(
+        [torch.tensor(d) for d in datasets["abide2"].labels]
+    )
+    # val_dataloader = DataLoader(
+    #     datasets["abide2"],
+    #     batch_size=BATCH_SIZE,
+    #     shuffle=False,
+    #     drop_last=True,
+    #     num_workers=NUM_WORKERS,
+    # )
+
+    dx_model = BinaryPrediction(
+        dropout=DROP_OUT,
+        n_parcels=197,
+        FK=params["FK"],
         batch_size=BATCH_SIZE,
-        shuffle=True,
-        drop_last=True,
-        num_workers=NUM_WORKERS,
-    )
-    # loss function and optimizer
-    loss_fn = nn.BCELoss()  # binary cross entropy
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=params["lr"],
-        weight_decay=params["weight_decay"],
+        n_time_seq=MAX_TIME_SEQ,
     )
 
-    n_epochs = 20  # number of epochs to run
-    batch_size = 10  # size of each batch
-    batch_start = torch.arange(0, len(X_lat_feat), batch_size)
+    # loss function and optimizer
+    loss_fn = nn.BCELoss()  # binary cross entropy
+    optimizer = optim.Adam(dx_model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        factor=0.1,
+        patience=LEARNING_RATE_PATIENCE,
+        threshold=LEARNING_RATE_THRES,
+    )
 
     # Hold the best model
     best_acc = -np.inf  # init to negative infinity
     best_weights = None
 
-    model = BinaryPrediction(
-        dropout=0,
-        n_parcels=197,
-        FK=params["FK"],
-    )
-    model.to(device)
+    dx_model.to(device)
 
-    for _ in tqdm(range(n_epochs)):
-        model.train()
+    for _ in tqdm(range(N_EPOCHS)):
+        dx_model.train()
         mean_loss_tng = 0.0
-        all_preds_tng = []
-        all_labels_tng = []
-        all_preds_val = []
-        all_labels_val = []
+        mean_acc_tng = 0.0
         for sampled_batch in tng_dataloader:
             # take a batch
             inputs = sampled_batch["input"].to(device)
             labels = sampled_batch["label"].to(device)
             # forward pass
-            preds = model(inputs)
+            preds = dx_model(inputs)
             loss = loss_fn(preds, labels)
+            mean_loss_tng += loss.item()
             # backward pass
             optimizer.zero_grad()
             loss.backward()
             # update weights
             optimizer.step()
-            # print progress
+
+            # save batch accuracy
             acc = (preds.round() == labels).float().mean()
-            print(f"Training: loss = {loss}; acc = {acc}")
+            mean_acc_tng += acc
+
+        mean_loss_tng = mean_loss_tng / len(tng_dataloader)
+        mean_acc_tng = mean_acc_tng / len(tng_dataloader)
+        scheduler.step(mean_loss_tng)
+        print(
+            f"Training: avg loss = {mean_loss_tng}; avg acc = {mean_acc_tng}"
+        )
 
         # evaluate accuracy on validation
-        model.eval()
-        mean_loss_val = 0.0
-
-        inputs = val_dataloader.inputs.to(device)
-        labels = val_dataloader.labels.to(device)
-        preds = model(inputs)
-        acc = (preds.round() == labels).float().mean()
+        dx_model.eval()
+        val_inputs = val_inputs.to(device)
+        val_labels = val_labels.to(device)
+        val_preds = dx_model(val_inputs)
+        acc = (val_preds.round() == val_labels).float().mean()
         acc = float(acc)
         print(f"Validation: acc = {acc}")
         if acc > best_acc:
             best_acc = acc
-            best_weights = copy.deepcopy(model.state_dict())
+            best_weights = copy.deepcopy(dx_model.state_dict())
     # restore model and return best accuracy
-    model.load_state_dict(best_weights)
+    dx_model.load_state_dict(best_weights)
