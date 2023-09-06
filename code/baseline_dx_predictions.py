@@ -143,6 +143,8 @@ if __name__ == "__main__":
 
     # plotting
     df = pd.concat([baseline, basline_avgr2, basline_r2map], axis=0)
+    df.to_csv(args.horizon_dir / "simple_classifiers.csv")
+
     sns.set_theme(style="whitegrid")
     f, ax = plt.subplots(figsize=(6, 5))
     sns.despine(bottom=True, left=True)
