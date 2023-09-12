@@ -72,7 +72,9 @@ if __name__ == "__main__":
 
     # load model
     model_path = (
-        args.model if args.model.exists() else args.model / "model.pkl"
+        args.model
+        if args.model.is_file() and args.model.suffix == ".pkl"
+        else args.model / "model.pkl"
     )
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
@@ -123,9 +125,9 @@ if __name__ == "__main__":
             conv_layers = np.array(
                 [module_output_to_numpy(o) for o in save_output.outputs]
             )  # get all layers (layer, batch, node, feature F)
-            # let first layer be batch / time dimension
-            # (batch, layer, node, feature F)
-            conv_layers = np.swapaxes(conv_layers, 0, 1)
+            # first layer is nodes, since the rest will be compressed
+            # (node, batch, layer, feature F)
+            conv_layers = np.swapaxes(conv_layers, 0, 2)
 
             # remove the hooks
             for handle in hook_handles:
