@@ -65,9 +65,8 @@ if __name__ == "__main__":
     print(f"Working on {device}.")
 
     output_dir = args.output_dir
-    output_dir = check_path(output_dir)
     output_dir = Path(output_dir)
-    output_dir.mkdir()
+    output_dir.mkdir(exist_ok=True)
     output_metric_path = output_dir / "convlayers.h5"
 
     # load model

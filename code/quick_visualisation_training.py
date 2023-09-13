@@ -14,7 +14,7 @@ if __name__ == "__main__":
         "--model_dir", "-m", type=Path, help="model output directory"
     )
     parser.add_argument(
-        "--horizon_dir", "-p", type=Path, help="Path to horizon predictiondir."
+        "--horizon_dir", "-p", type=Path, help="Path to horizon prediction."
     )
     args = parser.parse_args()
 
