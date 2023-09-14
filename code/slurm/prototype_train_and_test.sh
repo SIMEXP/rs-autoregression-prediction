@@ -10,12 +10,25 @@ source /lustre03/project/6003287/${USER}/.virtualenvs/rs-autoregression-predicti
 cd /lustre03/project/6003287/${USER}/rs-autoregression-prediction
 
 python "code/train_and_test.py" \
-    -o outputs/prototype_train_and_test_within-sites_original-tr \
+    -o outputs/prototype \
     -p code/parameters/prototype.json \
     -v 1
 
 python "code/predict_horizon.py" \
-    -o outputs/prototype_predict_horizon_within-sites_original-tr \
-    -m outputs/prototype_train_and_test_within-sites_original-tr/model.pkl \
+    -o outputs/prototype/features \
+    -m outputs/prototype/model.pkl \
     -p code/parameters/prototype.json \
     -v 1
+
+python "code/extract_layers.py" \
+    -o outputs/prototype/features \
+    -m outputs/prototype/model.pkl \
+    -p code/parameters/prototype.json
+
+python "code/quick_visualisation_training.py" \
+    -m outputs/prototype/ \
+    -f outputs/prototype/features/
+
+python "code/baseline_dx_prediction.py" \
+    -m outputs/prototype/ \
+    -f outputs/prototype/features/
