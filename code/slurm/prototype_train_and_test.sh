@@ -27,8 +27,8 @@ python "code/extract_layers.py" \
 
 python "code/quick_visualisation_training.py" \
     -m outputs/prototype/ \
-    -p outputs/prototype/reports/
+    -f outputs/prototype/features/
 
 python "code/baseline_dx_prediction.py" \
     -m outputs/prototype/ \
-    -p outputs/prototype/benchmark
+    -f outputs/prototype/features/

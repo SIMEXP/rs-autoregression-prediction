@@ -28,16 +28,16 @@ if __name__ == "__main__":
         "--model_dir", "-m", type=Path, help="model output directory"
     )
     parser.add_argument(
-        "--horizon_dir", "-p", type=Path, help="Path to horizon predictiondir."
+        "--feature_dir", "-f", type=Path, help="Path to horizon predictiondir."
     )
     args = parser.parse_args()
 
-    (args.horizon_dir / "figures").mkdir(exist_ok=True)
+    (args.model_dir / "figures").mkdir(exist_ok=True)
 
     model_name = args.model_dir.name
 
-    feature_t1_file = args.horizon_dir / f"{model_name}_horizon-1.h5"
-    convlayer_file = args.model_dir / "convlayers.h5"
+    feature_t1_file = args.feature_dir / f"{model_name}_horizon-1.h5"
+    convlayer_file = args.feature_dir / "convlayers.h5"
 
     # ABIDE 1
     abide1 = load_h5_data_path(
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         ],
         axis=0,
     )
-    df.to_csv(args.horizon_dir / "simple_classifiers.csv")
+    df.to_csv(args.model_dir / "figures/simple_classifiers.csv")
 
     sns.set_theme(style="whitegrid")
     f, ax = plt.subplots(figsize=(7, 5))
@@ -261,4 +261,4 @@ if __name__ == "__main__":
         "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
     )
     plt.tight_layout()
-    plt.savefig(args.horizon_dir / "figures/simple_classifiers.png")
+    plt.savefig(args.model_dir / "figures/simple_classifiers.png")
