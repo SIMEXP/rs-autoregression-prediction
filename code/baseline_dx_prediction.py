@@ -126,7 +126,7 @@ if __name__ == "__main__":
         {
             "Accuracy": acc,
             "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["R2 map"] * 4,
+            "Feature": ["t+1\nR2 map"] * 4,
         }
     )
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         {
             "Accuracy": acc,
             "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["Average R2"] * 4,
+            "Feature": ["t+1\nAverage R2"] * 4,
         }
     )
 
