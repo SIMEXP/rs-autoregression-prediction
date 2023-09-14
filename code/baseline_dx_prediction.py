@@ -219,7 +219,38 @@ if __name__ == "__main__":
             "Feature": ["Conv layers \n avg pooling"] * 4,
         }
     )
-
+    print("convolution layer - std pooling")
+    acc = []
+    data = {}
+    for abide, dset in zip(["abide1", "abide2"], ["tng", "test"]):
+        dset_path = load_h5_data_path(
+            convlayer_file,
+            f"{abide}.*/*/sub-.*desc-197.*",
+            shuffle=True,
+        )
+        conv_layers = []
+        for d in dset_path:
+            d = load_data(convlayer_file, d, dtype="data")[0]
+            d = torch.tensor(d, dtype=torch.float32)
+            d = torch.std_mean(d, (1, 2, 3))[0].flatten().numpy()
+            conv_layers.append(d)
+        dx = [
+            load_data(convlayer_file, d, dtype="diagnosis")[0]
+            for d in dset_path
+        ]
+        data[dset] = {"conv_layers": conv_layers, "dx": dx}
+    for clf in [svc, lr, rr, mlp]:
+        clf.fit(data["tng"]["conv_layers"], data["tng"]["dx"])
+        test_pred = clf.predict(data["test"]["conv_layers"])
+        acc.append(accuracy_score(data["test"]["dx"], test_pred))
+        print(f"accuracy: {acc[-1]:.3f}")
+    basline_conv_std = pd.DataFrame(
+        {
+            "Accuracy": acc,
+            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
+            "Feature": ["Conv layers \n std pooling"] * 4,
+        }
+    )
     # plotting
     df = pd.concat(
         [
@@ -227,6 +258,7 @@ if __name__ == "__main__":
             basline_avgr2,
             basline_r2map,
             basline_conv_avg,
+            basline_conv_std,
             basline_conv_max,
         ],
         axis=0,
@@ -256,7 +288,7 @@ if __name__ == "__main__":
         handletextpad=0,
     )
     plt.ylim(0.4, 0.7)
-    plt.hlines(0.5, -0.3, 5, linestyles="dashed", colors="black")
+    plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
     plt.title(
         "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
     )
