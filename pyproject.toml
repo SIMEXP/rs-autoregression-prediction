@@ -3,6 +3,9 @@ target-version = ['py38']
 exclude = "code/fmri-autoreg"
 line_length = 79
 
+[tool.codespell]
+skip = '*.ipynb'
+
 [tool.isort]
 profile = "black"
 src_paths = [
@@ -11,3 +14,42 @@ src_paths = [
 line_length = 79
 skip_gitignore = true
 combine_as_imports = true
+
+[tool.ruff]
+exclude = [
+    "code/*.ipynb",
+    "**/__init__.py",
+    "**/tests/*",
+    "*build/",
+    "code/fmri-autoreg",
+]
+
+ignore = [
+    "E501",
+    "F401",
+    "F403",
+    "B905"
+]
+line-length = 79
+select = [
+    "B",
+    "B9",
+    "C",
+    "E",
+    "F",
+    "W",
+]
+
+[tool.ruff.mccabe]
+max-complexity = 18
+
+[tool.ruff.pycodestyle]
+max-doc-length = 72
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.per-file-ignores]
+"*_test.py" = [
+    "S101",  # Use of `assert` detected
+]
