@@ -20,7 +20,92 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
-data_file = "inputs/connectomes/processed_connectomes.h5"
+
+# get connectomes
+def get_model_data(
+    data_file, tng_dset_path, test_dset_path, measure="connectome"
+):
+    if measure not in [
+        "connectome",
+        "r2map",
+        "avgr2",
+        "conv_max",
+        "conv_avg",
+        "conv_std",
+    ]:
+        raise NotImplementedError(
+            "measure must be one of 'connectome', 'r2map', 'avgr2'"
+        )
+    if measure == "connectome":
+        cm = ConnectivityMeasure(kind="correlation", vectorize=True)
+    elif measure == "conv_max":
+        m = nn.AdaptiveMaxPool3d((1, 1, 1))
+    elif measure == "conv_avg":
+        m = nn.AdaptiveAvgPool3d((1, 1, 1))
+    elif measure == "conv_std":
+        m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
+
+    dataset = {}
+    for set_name, dset_path in zip(
+        ["tng", "test"], [tng_dset_path, test_dset_path]
+    ):
+        data = load_data(data_file, dset_path, dtype="data")
+        if "r2" in measure:
+            data = np.concatenate(data).squeeze()
+            if measure == "avgr2":
+                data = data.mean(axis=1).reshape(-1, 1)
+            data = StandardScaler().fit_transform(data)
+
+        if measure == "connectome":
+            data = cm.fit_transform(data)
+
+        if "conv" in measure:
+            convlayers = []
+            for d in data:
+                d = torch.tensor(d, dtype=torch.float32)
+                d = m(d).flatten().numpy()
+                convlayers.append(d)
+            data = convlayers
+
+        label = load_data(data_file, dset_path, dtype="diagnosis")
+
+        dataset[set_name] = {"data": data, "label": label}
+    return dataset
+
+
+baseline_details = {
+    "connectome": {
+        "data_file": "inputs/connectomes/processed_connectomes.h5",
+        "data_file_pattern": "abide.*/*/sub-.*desc-197.*timeseries",
+        "plot_label": "Connectome",
+    },
+    "avgr2": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\n average R2",
+    },
+    "r2map": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\nR2 map",
+    },
+    "conv_avg": {
+        "data_file": None,
+        "data_file_pattern": "convlayers",
+        "plot_label": "Conv layers \n avg pooling",
+    },
+    "conv_std": {
+        "data_file": None,
+        "data_file_pattern": "convlayers",
+        "plot_label": "Conv layers \n std pooling",
+    },
+    "conv_max": {
+        "data_file": None,
+        "data_file_pattern": "convlayers",
+        "plot_label": "Conv layers \n max pooling",
+    },
+}
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -37,38 +122,19 @@ if __name__ == "__main__":
     model_name = args.model_dir.name
 
     feature_t1_file = args.feature_dir / f"{model_name}_horizon-1.h5"
-    convlayer_file = args.feature_dir / "convlayers.h5"
+    convlayer_file = args.feature_dir / f"{model_name}_convlayers.h5"
+    print(feature_t1_file)
+    print(convlayer_file)
+    for key in baseline_details:
+        if "r2" in key:
+            baseline_details[key]["data_file"] = feature_t1_file
+        elif "conv" in key:
+            baseline_details[key]["data_file"] = convlayer_file
+        else:
+            pass
 
-    # ABIDE 1
-    abide1 = load_h5_data_path(
-        data_file,
-        "abide1.*/*/sub-.*desc-197.*timeseries",
-        shuffle=True,
-    )
-    # ABIDE 2
-    abide2 = load_h5_data_path(
-        data_file,
-        "abide2.*/*/sub-.*desc-197.*timeseries",
-        shuffle=True,
-    )
-
-    # get connectomes
-    cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-    tng_data = cm.fit_transform(
-        [load_data(data_file, d, dtype="data")[0] for d in abide1]
-    )
-    tng_label = [load_data(data_file, d, dtype="diagnosis")[0] for d in abide1]
-    tng_sites = [d.split("/")[1] for d in abide1]
-
-    test_data = cm.fit_transform(
-        [load_data(data_file, d, dtype="data")[0] for d in abide2]
-    )
-    test_label = [
-        load_data(data_file, d, dtype="diagnosis")[0] for d in abide2
-    ]
-
-    # three baseline models
-    svc = LinearSVC(C=100, penalty="l2", max_iter=100000, random_state=42)
+    # four baseline models
+    svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
     lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
     rr = RidgeClassifier(random_state=42, max_iter=100000)
     mlp = MLPClassifier(
@@ -76,200 +142,57 @@ if __name__ == "__main__":
         max_iter=100000,
         random_state=42,
     )
+    clf_names = ["SVC", "LR", "Ridge", "MLP (sklearn)"]
 
-    # connectome
+    baselines_df = []
+
     print("Train on ABIDE 1, Test on ABIDE 2")
-    print("Connectome")
-    acc = []
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(tng_data, tng_label)
-        test_pred = clf.predict(test_data)
-        acc.append(accuracy_score(test_label, test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-
-    baseline = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["Connectome"] * 4,
-        }
-    )
-    # t+1 r2 map
-    print("r2 map")
-    r2_path = load_h5_data_path(feature_t1_file, "r2map")
-    tng_path = [p for p in r2_path if "abide1" in p]
-    test_path = [p for p in r2_path if "abide2" in p]
-
-    tng_label = [
-        load_data(feature_t1_file, p, dtype="diagnosis") for p in tng_path
-    ]
-    test_label = [
-        load_data(feature_t1_file, p, dtype="diagnosis") for p in test_path
-    ]
-
-    tng_data = [load_data(feature_t1_file, p, dtype="data") for p in tng_path]
-    tng_data = np.concatenate(tng_data).squeeze()
-    z_tng_data = StandardScaler().fit_transform(tng_data)
-    test_data = [
-        load_data(feature_t1_file, p, dtype="data") for p in test_path
-    ]
-    test_data = np.concatenate(test_data).squeeze()
-    z_test_data = StandardScaler().fit_transform(test_data)
-
-    acc = []
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(z_tng_data, tng_label)
-        test_pred = clf.predict(z_test_data)
-        acc.append(accuracy_score(test_label, test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-    basline_r2map = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["t+1\nR2 map"] * 4,
-        }
-    )
-
-    # t + 1 mean r2
-    print("average r2")
-    acc = []
-    avg_tng_data = tng_data.mean(axis=1).reshape(-1, 1)
-    avg_tng_data = StandardScaler().fit_transform(avg_tng_data)
-    avg_test_data = test_data.mean(axis=1).reshape(-1, 1)
-    avg_test_data = StandardScaler().fit_transform(avg_test_data)
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(avg_tng_data, tng_label)
-        test_pred = clf.predict(avg_test_data)
-        acc.append(accuracy_score(test_label, test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-    basline_avgr2 = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["t+1\nAverage R2"] * 4,
-        }
-    )
-
-    # convolution layer
-    # max pooling over time, and layer, and feature
-    print("convolution layer - max pooling")
-    acc = []
-    m = nn.AdaptiveMaxPool3d((1, 1, 1))
-    data = {}
-    for abide, dset in zip(["abide1", "abide2"], ["tng", "test"]):
+    for measure in baseline_details:
+        print(measure)
         dset_path = load_h5_data_path(
-            convlayer_file,
-            f"{abide}.*/*/sub-.*desc-197.*",
+            baseline_details[measure]["data_file"],
+            baseline_details[measure]["data_file_pattern"],
             shuffle=True,
         )
-        conv_layers = []
-        for d in dset_path:
-            d = load_data(convlayer_file, d, dtype="data")[0]
-            d = torch.tensor(d, dtype=torch.float32)
-            d = m(d).flatten().numpy()
-            conv_layers.append(d)
-        dx = [
-            load_data(convlayer_file, d, dtype="diagnosis")[0]
-            for d in dset_path
-        ]
-        data[dset] = {"conv_layers": conv_layers, "dx": dx}
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(data["tng"]["conv_layers"], data["tng"]["dx"])
-        test_pred = clf.predict(data["test"]["conv_layers"])
-        acc.append(accuracy_score(data["test"]["dx"], test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-    basline_conv_max = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["Conv layers \n max pooling"] * 4,
-        }
-    )
+        tng_path = [p for p in dset_path if "abide1" in p]
+        test_path = [p for p in dset_path if "abide2" in p]
+        dataset = get_model_data(
+            baseline_details[measure]["data_file"],
+            tng_dset_path=tng_path,
+            test_dset_path=test_path,
+            measure=measure,
+        )
+        acc = []
+        for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
+            clf.fit(dataset["tng"]["data"], dataset["tng"]["label"])
+            test_pred = clf.predict(dataset["test"]["data"])
+            acc_score = accuracy_score(dataset["test"]["label"], test_pred)
+            acc.append(acc_score)
+            print(f"{clf_name} accuracy: {acc_score:.3f}")
 
-    print("convolution layer - avg pooling")
-    acc = []
-    m = nn.AdaptiveAvgPool3d((1, 1, 1))
-    data = {}
-    for abide, dset in zip(["abide1", "abide2"], ["tng", "test"]):
-        dset_path = load_h5_data_path(
-            convlayer_file,
-            f"{abide}.*/*/sub-.*desc-197.*",
-            shuffle=True,
+        baseline = pd.DataFrame(
+            {
+                "Accuracy": acc,
+                "Classifier": clf_names,
+                "Feature": [baseline_details[measure]["plot_label"]] * 4,
+            }
         )
-        conv_layers = []
-        for d in dset_path:
-            d = load_data(convlayer_file, d, dtype="data")[0]
-            d = torch.tensor(d, dtype=torch.float32)
-            d = m(d).flatten().numpy()
-            conv_layers.append(d)
-        dx = [
-            load_data(convlayer_file, d, dtype="diagnosis")[0]
-            for d in dset_path
-        ]
-        data[dset] = {"conv_layers": conv_layers, "dx": dx}
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(data["tng"]["conv_layers"], data["tng"]["dx"])
-        test_pred = clf.predict(data["test"]["conv_layers"])
-        acc.append(accuracy_score(data["test"]["dx"], test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-    basline_conv_avg = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["Conv layers \n avg pooling"] * 4,
-        }
-    )
-    print("convolution layer - std pooling")
-    acc = []
-    data = {}
-    for abide, dset in zip(["abide1", "abide2"], ["tng", "test"]):
-        dset_path = load_h5_data_path(
-            convlayer_file,
-            f"{abide}.*/*/sub-.*desc-197.*",
-            shuffle=True,
-        )
-        conv_layers = []
-        for d in dset_path:
-            d = load_data(convlayer_file, d, dtype="data")[0]
-            d = torch.tensor(d, dtype=torch.float32)
-            d = torch.std_mean(d, (1, 2, 3))[0].flatten().numpy()
-            conv_layers.append(d)
-        dx = [
-            load_data(convlayer_file, d, dtype="diagnosis")[0]
-            for d in dset_path
-        ]
-        data[dset] = {"conv_layers": conv_layers, "dx": dx}
-    for clf in [svc, lr, rr, mlp]:
-        clf.fit(data["tng"]["conv_layers"], data["tng"]["dx"])
-        test_pred = clf.predict(data["test"]["conv_layers"])
-        acc.append(accuracy_score(data["test"]["dx"], test_pred))
-        print(f"accuracy: {acc[-1]:.3f}")
-    basline_conv_std = pd.DataFrame(
-        {
-            "Accuracy": acc,
-            "Classifier": ["SVC", "LR", "Ridge", "MLP (sklearn)"],
-            "Feature": ["Conv layers \n std pooling"] * 4,
-        }
-    )
+        baselines_df.append(baseline)
+
     # plotting
-    df = pd.concat(
-        [
-            baseline,
-            basline_avgr2,
-            basline_r2map,
-            basline_conv_avg,
-            basline_conv_std,
-            basline_conv_max,
-        ],
+    baselines_df = pd.concat(
+        baselines_df,
         axis=0,
     )
-    df.to_csv(args.model_dir / "figures/simple_classifiers.csv")
+    baselines_df.to_csv(
+        args.feature_dir / "figures/simple_classifiers.tsv", sep="\t"
+    )
 
     sns.set_theme(style="whitegrid")
-    f, ax = plt.subplots(figsize=(7, 5))
+    f, ax = plt.subplots(figsize=(9, 5))
     sns.despine(bottom=True, left=True)
     sns.pointplot(
-        data=df,
+        data=baselines_df,
         x="Feature",
         y="Accuracy",
         hue="Classifier",
@@ -293,4 +216,4 @@ if __name__ == "__main__":
         "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
     )
     plt.tight_layout()
-    plt.savefig(args.model_dir / "figures/simple_classifiers.png")
+    plt.savefig(args.feature_dir / "figures/simple_classifiers.png")

@@ -9,17 +9,22 @@ from pathlib import Path
 from typing import List, Tuple, Union
 
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import statsmodels.api as sm
 from giga_companion.load_data import (
     load_data,
     load_h5_data_path,
     split_data_by_site,
 )
+from seaborn import boxplot, lineplot
 from sklearn.metrics import r2_score
 from src.data.load_data import load_params, make_input_labels, make_seq
 from src.models.predict_model import predict_horizon
 from src.models.train_model import train
 from src.tools import check_path
+from statsmodels.formula.api import ols
 
 
 def main():
@@ -140,6 +145,21 @@ def main():
     np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
     np.save(os.path.join(output_dir, "pred_test.npy"), Z_test)
     np.save(os.path.join(output_dir, "labels_test.npy"), Y_test)
+
+    # visualise training loss
+    (Path(output_dir) / "figures").mkdir(exist_ok=True)
+    training_losses = np.load(
+        Path(output_dir) / "training_losses.npy", allow_pickle=True
+    ).tolist()
+    training_losses = pd.DataFrame(training_losses)
+
+    plt.figure()
+    g = lineplot(data=training_losses)
+    g.set_xlabel("Epoc")
+    g.set_ylabel("Loss (MSE)")
+    for fold, r2 in zip(["tng", "val", "test"], [r2_tng, r2_val, r2_test]):
+        print(f"r2 {fold}: {np.mean(r2)}")
+    plt.savefig(Path(output_dir) / "figures/training_losses.png")
 
 
 if __name__ == "__main__":

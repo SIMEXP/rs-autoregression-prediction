@@ -14,20 +14,11 @@ python "code/train_and_test.py" \
     -p code/parameters/prototype.json \
     -v 1
 
-python "code/predict_horizon.py" \
+python "code/extract_features.py" \
     -o outputs/prototype/features \
     -m outputs/prototype/model.pkl \
     -p code/parameters/prototype.json \
     -v 1
-
-python "code/extract_layers.py" \
-    -o outputs/prototype/features \
-    -m outputs/prototype/model.pkl \
-    -p code/parameters/prototype.json
-
-python "code/quick_visualisation_training.py" \
-    -m outputs/prototype/ \
-    -f outputs/prototype/features/
 
 python "code/baseline_dx_prediction.py" \
     -m outputs/prototype/ \
