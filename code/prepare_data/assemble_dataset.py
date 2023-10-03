@@ -1,5 +1,12 @@
-"""Select data based on abide QC results. Save as HDF5."""
+"""Select data based on abide QC results. Save as HDF5
+This is a standalone script to assemble the dataset.
+I isolate this from the ML workflow as we don't need to rerun this step.
+Dependencies noted in the requirements.txt file of this directory.
+
+To-do: apply this to generic giga processing 2 h5 files.
+"""
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -9,7 +16,6 @@ import numpy as np
 import pandas as pd
 from nilearn import signal
 from scipy.interpolate import UnivariateSpline
-from src.data import load_data
 from tqdm import tqdm
 
 # recode all baseline as zero
@@ -89,6 +95,52 @@ TR_MAPPERS = {
 }
 
 TARGET_TR = None
+
+
+def load_data(path, task_filter=None, standardize=False, shuffle=False):
+    """Load pre-processed data from HDF5 file.
+
+    Args:
+      path (str): path to the HDF5 file
+      task_filter (str): regular expression to apply on run names
+        (default=None)
+      standardize (bool): bool (default=False)
+      shuffle (bool): whether to shuffle the data (default=False)
+
+    Returns:
+      (list of numpy arrays): loaded data
+    """
+    data_list = []
+    with h5py.File(path, "r") as h5file:
+        for dset in _traverse_datasets(h5file):
+            if task_filter is None or re.search(task_filter, dset):
+                data_list.append(h5file[dset][:])
+    if standardize and data_list:
+        means = np.concatenate(data_list, axis=0).mean(axis=0)
+        stds = np.concatenate(data_list, axis=0).std(axis=0)
+        data_list = [(data - means) / stds for data in data_list]
+    if shuffle and data_list:
+        rng = np.random.default_rng()
+        data_list = [rng.shuffle(d) for d in data_list]
+    return data_list
+
+
+def _traverse_datasets(hdf_file):
+    """Load nested hdf5 files.
+    https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
+    """
+
+    def h5py_dataset_iterator(g, prefix=""):
+        for key in g.keys():
+            item = g[key]
+            path = f"{prefix}/{key}"
+            if isinstance(item, h5py.Dataset):  # test for dataset
+                yield (path, item)
+            elif isinstance(item, h5py.Group):  # test for group (go down)
+                yield from h5py_dataset_iterator(item, path)
+
+    for path, _ in h5py_dataset_iterator(hdf_file):
+        yield path
 
 
 def _parse_path(
