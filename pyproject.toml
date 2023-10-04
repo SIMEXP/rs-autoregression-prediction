@@ -1,6 +1,6 @@
 [tool.black]
 target-version = ['py38']
-exclude = "code/fmri-autoreg"
+exclude = "src/fmri-autoreg"
 line_length = 79
 
 [tool.codespell]

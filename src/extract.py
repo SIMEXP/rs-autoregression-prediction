@@ -244,12 +244,12 @@ def main():
     plt.figure()
     g = boxplot(x="site", y="r2mean", hue="diagnosis", data=df_for_stats)
     g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "figures/diagnosis_by_sites.png")
+    plt.savefig(output_dir / "diagnosis_by_sites.png")
 
     plt.figure()
     g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
     g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "figures/sex_by_sites.png")
+    plt.savefig(output_dir / "sex_by_sites.png")
 
 
 if __name__ == "__main__":

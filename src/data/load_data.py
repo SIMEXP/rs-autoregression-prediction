@@ -11,10 +11,10 @@ from sklearn.model_selection import train_test_split
 
 def split_data_by_site(
     path: Path,
-    datasets: List[str],
+    data_filter: str,
     test_set: Union[float, None] = None,
     split_type: Union[str, None] = None,
-    data_filter: Union[str, None] = None,
+    datasets: Union[List[str], None] = None,
 ) -> Tuple[List[np.ndarray]]:
     """Train-test split with different strategies for multiple datasets.
 
@@ -41,14 +41,6 @@ def split_data_by_site(
             f"it for all use cases. Current input: {data_filter}"
         )
     if split_type == "between_site":
-        # get all the data
-        tmp_data_list = load_h5_data_path(
-            path=path, data_filter=data_filter, shuffle=False
-        )
-        # count number of sites
-        all_datasets = [d.split("/")[1] for d in tmp_data_list]
-        unique_datasets = set(all_datasets)
-        datasets = list(unique_datasets)
         # train test split on the number of sites
         train, test = train_test_split(
             datasets, test_size=test_set, random_state=42

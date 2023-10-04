@@ -3,47 +3,46 @@
 # See https://pre-commit.com/hooks.html for more hooks
 
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.4.0
-  hooks:
-  - id: trailing-whitespace
-  - id: end-of-file-fixer
-  - id: check-yaml
-  - id: check-json
-  - id: check-added-large-files
-  - id: check-case-conflict
-  - id: check-merge-conflict
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+    rev: 0.2.2
+    hooks:
+      - id: yamlfmt
+        args: [--mapping, '2', --sequence, '4', --offset, '2']
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
 
 
-- repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-  rev: 0.2.2
-  hooks:
-  - id: yamlfmt
-    args: [--mapping, '2', --sequence, '2', --offset, '0']
-
-- repo: https://github.com/psf/black
-  rev: 23.3.0
-  hooks:
-  - id: black
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.4
+    hooks:
+      - id: codespell
+        args: [--toml=pyproject.toml]
+        additional_dependencies: [tomli]
 
 
-- repo: https://github.com/codespell-project/codespell
-  rev: v2.2.4
-  hooks:
-  - id: codespell
-    args: [--toml=pyproject.toml]
-    additional_dependencies: [tomli]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.251
+    hooks:
+      - id: ruff
+        args: [--config=pyproject.toml]
 
 
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.0.251
-  hooks:
-  - id: ruff
-    args: [--config=pyproject.toml]
-
-
-- repo: https://github.com/pycqa/isort
-  rev: 5.12.0
-  hooks:
-  - id: isort
-    args: [--profile, black, --filter-files]
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: [--profile, black, --filter-files]

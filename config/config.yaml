@@ -1,0 +1,9 @@
+---
+defaults:
+  - _self_
+  - model: chebnet
+  - experiment: experiment
+  - data: abide
+
+torch_device: cuda:0
+verbose: 2
