@@ -15,3 +15,6 @@ testing:
   path: inputs/connectomes/processed_connectomes.h5
   data_filter: abide2.*/*/sub-.*desc-197.*timeseries
   shuffle: true
+predicition:
+  path: inputs/connectomes/processed_connectomes.h5
+  data_filter: abide.*/*/sub-.*desc-197.*timeseries

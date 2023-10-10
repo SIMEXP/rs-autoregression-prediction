@@ -23,18 +23,19 @@ from src.models.train_model import train
 from src.tools import check_path
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="config")
+@hydra.main(version_base="1.3", config_path="../config", config_name="train")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     print(f"Current working directory : {os.getcwd()}")
     print(f"Output directory  : {output_dir}")
 
-    batch_size = (
-        params["data"]["batch_size"] if "batch_size" in params else 100
-    )
+    # organise parameters
     compute_edge_index = params["model"]["model"] == "Chebnet"
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
+    train_param = {**params["model"], **params["experiment"]}
+    train_param["batch_size"] = params["data"]["batch_size"]
+
     # load data
     tng_dset, val_dset = instantiate(params["data"]["training"])
     test_dset = instantiate(params["data"]["testing"])
@@ -51,6 +52,7 @@ def main(params: DictConfig) -> None:
     val_data = load_data(params["data"]["data_file"], val_dset, dtype="data")
     test_data = load_data(params["data"]["data_file"], test_dset, dtype="data")
 
+    # training data labels
     X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
         tng_data,
         val_data,
@@ -61,10 +63,10 @@ def main(params: DictConfig) -> None:
         thres,
     )
     train_data = (X_tng, Y_tng, X_val, Y_val, edge_index)
-    train_param = {**params["model"], **params["experiment"]}
-    train_param["batch_size"] = params["data"]["batch_size"]
     del tng_data
     del val_data
+
+    # train model
     (
         model,
         r2_tng,
@@ -76,6 +78,8 @@ def main(params: DictConfig) -> None:
         losses,
         _,
     ) = train(train_param, train_data, verbose=params["verbose"])
+
+    # save training results
     np.save(os.path.join(output_dir, "r2_tng.npy"), r2_tng)
     np.save(os.path.join(output_dir, "r2_val.npy"), r2_val)
     np.save(os.path.join(output_dir, "pred_tng.npy"), Z_tng)
@@ -99,6 +103,8 @@ def main(params: DictConfig) -> None:
         pk.dump(model, f)
 
     print("Predicting test set")
+
+    # make test labels
     X_test, Y_test = make_seq(
         test_data,
         params["model"]["seq_length"],
@@ -107,20 +113,19 @@ def main(params: DictConfig) -> None:
     )
     del test_data
 
-    batch_size = (
-        len(X_tng)
-        if "batch_size" not in params["data"]
-        else params["data"]["batch_size"]
-    )
+    # predict on test data
     Z_test = np.concatenate(
         [
             model.predict(x)
-            for x in np.array_split(X_test, ceil(X_test.shape[0] / batch_size))
+            for x in np.array_split(
+                X_test, ceil(X_test.shape[0] / params["data"]["batch_size"])
+            )
         ]
     )
     r2_test = r2_score(Y_test, Z_test, multioutput="raw_values")
     mean_r2_test = np.mean(r2_test)
 
+    # save predict results
     np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
     np.save(os.path.join(output_dir, "pred_test.npy"), Z_test)
     np.save(os.path.join(output_dir, "labels_test.npy"), Y_test)
@@ -128,17 +133,18 @@ def main(params: DictConfig) -> None:
     del Y_test
     del r2_test
 
-    # visualise training loss
-    training_losses = pd.DataFrame(losses)
-
-    plt.figure()
-    g = lineplot(data=training_losses)
-    g.set_xlabel("Epoc")
-    g.set_ylabel("Loss (MSE)")
+    # overview
     for fold, r2 in zip(
         ["tng", "val", "test"], [mean_r2_tng, mean_r2_val, mean_r2_test]
     ):
         print(f"r2 {fold}: {r2}")
+
+    # visualise training loss
+    training_losses = pd.DataFrame(losses)
+    plt.figure()
+    g = lineplot(data=training_losses)
+    g.set_xlabel("Epoc")
+    g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
 
 

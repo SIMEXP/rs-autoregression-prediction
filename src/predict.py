@@ -5,14 +5,18 @@ import argparse
 from pathlib import Path
 
 import h5py
+import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
 import torch.nn as nn
-from giga_companion.load_data import load_data, load_h5_data_path
+from data.load_data import load_data, load_h5_data_path
+from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from nilearn.connectome import ConnectivityMeasure
+from omegaconf import DictConfig, OmegaConf
+from seaborn import boxplot
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedKFold
@@ -75,8 +79,8 @@ def get_model_data(
 
 baseline_details = {
     "connectome": {
-        "data_file": "inputs/connectomes/processed_connectomes.h5",
-        "data_file_pattern": "abide.*/*/sub-.*desc-197.*timeseries",
+        "data_file": None,
+        "data_file_pattern": None,
         "plot_label": "Connectome",
     },
     "avgr2": {
@@ -107,29 +111,27 @@ baseline_details = {
 }
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model_dir", "-m", type=Path, help="model output directory"
+@hydra.main(version_base="1.3", config_path="../config", config_name="predict")
+def main(params: DictConfig) -> None:
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    convlayer_file = params["convlayers_path"]
+    feature_t1_file = (
+        convlayer_file.parent / f"feature_horizon-{params['horizon']}.h5"
     )
-    parser.add_argument(
-        "--feature_dir", "-f", type=Path, help="Path to horizon predictiondir."
-    )
-    args = parser.parse_args()
 
-    (args.model_dir / "figures").mkdir(exist_ok=True)
-
-    model_name = args.model_dir.name
-
-    feature_t1_file = args.feature_dir / f"{model_name}_horizon-1.h5"
-    convlayer_file = args.feature_dir / f"{model_name}_convlayers.h5"
     print(feature_t1_file)
     print(convlayer_file)
+
     for key in baseline_details:
         if "r2" in key:
             baseline_details[key]["data_file"] = feature_t1_file
         elif "conv" in key:
             baseline_details[key]["data_file"] = convlayer_file
+        elif "connectome" in key:
+            baseline_details[key]["data_file"] = params["data"]["data_file"]
+            baseline_details[key]["data_file_pattern"] = params["data"][
+                "predicition"
+            ]["data_filter"]
         else:
             pass
 
@@ -179,14 +181,31 @@ if __name__ == "__main__":
         )
         baselines_df.append(baseline)
 
+    stats_path = (
+        params["feature_path"] / f"feature_horizon-{params['horizon']}.tsv"
+    )
+    print("Plot r2 mean results quickly.")
+    # quick plotting
+    df_for_stats = pd.read_csv(stats_path, sep="\t")
+    df_for_stats = df_for_stats[
+        (df_for_stats.r2mean > -1e16)
+    ]  # remove outliers
+    plt.figure()
+    g = boxplot(x="site", y="r2mean", hue="diagnosis", data=df_for_stats)
+    g.set_xticklabels(g.get_xticklabels(), rotation=90)
+    plt.savefig(output_dir / "diagnosis_by_sites.png")
+
+    plt.figure()
+    g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
+    g.set_xticklabels(g.get_xticklabels(), rotation=90)
+    plt.savefig(output_dir / "sex_by_sites.png")
+
     # plotting
     baselines_df = pd.concat(
         baselines_df,
         axis=0,
     )
-    baselines_df.to_csv(
-        args.feature_dir / "figures/simple_classifiers.tsv", sep="\t"
-    )
+    baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
 
     sns.set_theme(style="whitegrid")
     f, ax = plt.subplots(figsize=(9, 5))
@@ -216,4 +235,8 @@ if __name__ == "__main__":
         "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
     )
     plt.tight_layout()
-    plt.savefig(args.feature_dir / "figures/simple_classifiers.png")
+    plt.savefig(output_dir / "simple_classifiers.png")
+
+
+if __name__ == "__main__":
+    main()

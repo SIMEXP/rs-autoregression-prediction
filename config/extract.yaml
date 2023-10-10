@@ -1,0 +1,8 @@
+---
+defaults:
+  - _self_
+  - train
+
+horizon: 1
+# passing model path is necessary for evaluation
+model_path: ???
