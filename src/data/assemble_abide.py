@@ -97,34 +97,6 @@ TR_MAPPERS = {
 TARGET_TR = None
 
 
-def load_data(path, task_filter=None, standardize=False, shuffle=False):
-    """Load pre-processed data from HDF5 file.
-
-    Args:
-      path (str): path to the HDF5 file
-      task_filter (str): regular expression to apply on run names
-        (default=None)
-      standardize (bool): bool (default=False)
-      shuffle (bool): whether to shuffle the data (default=False)
-
-    Returns:
-      (list of numpy arrays): loaded data
-    """
-    data_list = []
-    with h5py.File(path, "r") as h5file:
-        for dset in _traverse_datasets(h5file):
-            if task_filter is None or re.search(task_filter, dset):
-                data_list.append(h5file[dset][:])
-    if standardize and data_list:
-        means = np.concatenate(data_list, axis=0).mean(axis=0)
-        stds = np.concatenate(data_list, axis=0).std(axis=0)
-        data_list = [(data - means) / stds for data in data_list]
-    if shuffle and data_list:
-        rng = np.random.default_rng()
-        data_list = [rng.shuffle(d) for d in data_list]
-    return data_list
-
-
 def _traverse_datasets(hdf_file):
     """Load nested hdf5 files.
     https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
@@ -212,7 +184,7 @@ def concat_h5(path_h5s: Path, output_h5: Path) -> Path:
             site_name = p.parent.name
             site = h5file.create_group(site_name)
             with h5py.File(p, "r") as f:
-                for dset in tqdm(load_data._traverse_datasets(f)):
+                for dset in tqdm(_traverse_datasets(f)):
                     subject, session, dataset_name = _parse_path(dset)
                     data = f[dset][:]
                     if subject or session:
@@ -376,7 +348,7 @@ def main():
             original_tr = _get_abide_tr(abide_version, site_name)
 
             with h5py.File(path_tmp, "r") as f:
-                for dset in tqdm(load_data._traverse_datasets(f)):
+                for dset in tqdm(_traverse_datasets(f)):
                     if not _check_subject_pass_qc(dset, subjects):
                         continue
                     dset_name = dset.split("/")[-1]
