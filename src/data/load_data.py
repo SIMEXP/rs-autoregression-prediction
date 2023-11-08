@@ -2,7 +2,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import h5py
 import numpy as np
@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 def split_data_by_site(
     path: Path,
     data_filter: str,
-    test_set: Union[float, None] = None,
+    test_set: float = 0.25,
     split_type: Union[str, None] = None,
     datasets: Union[List[str], None] = None,
 ) -> Tuple[List[np.ndarray]]:
@@ -21,7 +21,7 @@ def split_data_by_site(
     Args:
         path (Path): Path to the h5 file with all the data.
         datasets (List[str]): a list of dataset names to process.
-        test_set (Union[float, None]): proportion of the test set size.
+        test_set (float): proportion of the test set size.
             If None, use scikit learn default (0.25).
         split_type (Union[str, None])): support `between_site`,
             `within_site`. If None, and None for data_filter,
@@ -83,6 +83,93 @@ def split_data_by_site(
             data_list, test_size=test_set, random_state=42
         )
         return tng_data, test_data
+
+
+def load_ukbb_dset_path(
+    path: Union[Path, str],
+    atlas_desc: str,
+    n_sample: int = 50,
+    val_set: float = 0.25,
+    test_set: float = 0.25,
+    segment: Union[int, List[int]] = -1,
+) -> Dict:
+    """Load time series of UK Biobank.
+
+    We segmented the time series per subject as independent samples,
+    hence it's important to make sure the same subject is not in both
+    training and testing set.
+
+    Args:
+        path (Union[Path, str]): Path to the hdf5 file.
+        atlas_desc (str): Regex pattern to look for suitable data,
+            such as the right `desc` field for atlas,
+            e.g., "atlas-MIST_desc-197".
+        n_sample (int, optional): number of subjects to use.
+            Defaults to 50, and -1 would take the full sample.
+        val_set (float, optional): proportion of the validation set
+            size in relation to the full sample. Defaults to 0.25.
+        test_set (float, optional): proportion of the test set size
+            in relation to the full sample. Defaults to 0.25.
+        segment (Union[int, List[int]], optional): segments of the
+            time series to use. 0 for the full time series.
+            Defaults to -1 to load all four segments.
+
+    Returns:
+        List[Union[np.ndarray, str, int, float]]: loaded data.
+    """
+    if isinstance(segment, int) and segment > 4:
+        raise ValueError(
+            "Segment number should be between 1 and 4, inclusive."
+            f"Current input: {segment}"
+        )
+    if isinstance(segment, list) and any([s > 4 for s in segment]):
+        raise ValueError(
+            "Segment number should be between 1 and 4, inclusive."
+            f"Current input: {segment}"
+        )
+
+    if segment == -1:
+        segment = [1, 2, 3, 4]
+    if segment == 0:
+        segment = [None]
+    elif segment <= 4:
+        segment = [segment]
+
+    # get the participant IDs to use
+    with h5py.File(path, "r") as h5file:
+        participant_id = list(h5file["ukbb"].keys())
+
+    if n_sample == -1:
+        pass
+    elif n_sample < len(participant_id):
+        total_proportion_sample = n_sample / len(participant_id)
+        participant_id, _ = train_test_split(
+            participant_id,
+            test_size=(1 - total_proportion_sample),
+            random_state=42,
+        )
+
+    # construct path
+    subject_path_template = (
+        "/ukbb/{sub}/{sub}_task-rest_{atlas_desc}_{seg}timeseries"
+    )
+    data_list = []
+    for sub in participant_id:
+        for seg in segment:
+            seg = f"seg-{seg}_" if seg is not None else ""
+            cur_sub_path = subject_path_template.format(
+                sub=sub, seg=seg, atlas_desc=atlas_desc
+            )
+            data_list.append(cur_sub_path)
+    # train-test-val split
+    train, test = train_test_split(
+        data_list, test_size=test_set, random_state=42
+    )
+    # calculate the proportion of val_set in the training loop
+    train, val = train_test_split(
+        train, test_size=val_set / (1 - test_set), random_state=42
+    )
+    return {"train": train, "val": val, "test": test}
 
 
 def load_data(

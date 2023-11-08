@@ -19,7 +19,6 @@ from tqdm import tqdm
 
 CONNECTOME_ARCHIVE_DIR = "/home/hwang1/projects/rrg-pbellec/hwang1/MIST.tar"
 QC_FILE = "inputs/connectomes/sourcedata/ukbb/task-rest_report.tsv"
-"inputs/connectomes/ukbb_test.h5"
 
 
 def load_data(path, task_filter=None):
@@ -75,13 +74,14 @@ def main():
         "the `seg-{index}` entity.",
     )
     args = parser.parse_args()
+    print(args)
 
     qc = pd.read_csv(QC_FILE, sep="\t", index_col=2)
-    subjects = qc["participant_id"][qc["pass_all_qc"] is True].tolist()
-    path_concat = Path(args.output)
-    with h5py.File(path_concat, "a") as f:
-        f.attrs["complied_date"] = str(datetime.today())
-
+    pass_qc = qc["pass_all_qc"] == True
+    subjects = qc["participant_id"][pass_qc].tolist()
+    print(f"Found {len(subjects)} subjects that passed QC.")
+    path_concat = str(args.output)
+    valid_subject = []
     with tarfile.open(CONNECTOME_ARCHIVE_DIR, "r") as f:
         for member in tqdm(f.getmembers()):
             if "sub" not in member.name:
@@ -89,6 +89,7 @@ def main():
             subj = int(member.name.split("sub-")[-1].split("_")[0])
             if subj not in subjects:
                 continue
+            valid_subject.append(subj)
             if fnmatch.fnmatch(member.name, "*simple+gsr.h5"):
                 f.extract(member, path=".")
                 path_tmp = Path(member.name)
@@ -109,6 +110,8 @@ def main():
                             )
             else:
                 continue
+    with h5py.File(path_concat, "a") as new_f:
+        new_f.create_dataset("/participant_id", data=valid_subject)
 
 
 if __name__ == "__main__":

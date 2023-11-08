@@ -25,7 +25,9 @@ from src.models.train_model import train
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="train")
+@hydra.main(
+    version_base="1.3", config_path="../config", config_name="training_scaling"
+)
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -39,22 +41,30 @@ def main(params: DictConfig) -> None:
     train_param["batch_size"] = params["data"]["batch_size"]
 
     # load data
-    tng_dset, val_dset = instantiate(params["data"]["training"])
-    test_dset = instantiate(params["data"]["testing"])
+    n_sample = params["experiment"]["scaling"]["n_sample"]
 
-    data_reference = {
-        "train": tng_dset,
-        "validation": val_dset,
-        "test": test_dset,
-    }
+    data_reference = instantiate(params["experiment"]["scaling"])
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
-
-    tng_data = load_data(params["data"]["data_file"], tng_dset, dtype="data")
-    val_data = load_data(params["data"]["data_file"], val_dset, dtype="data")
-    test_data = load_data(params["data"]["data_file"], test_dset, dtype="data")
+    if n_sample == -1:
+        n_sample = (
+            len(data_reference["train"])
+            + len(data_reference["val"])
+            + len(data_reference["test"])
+        )
+    log.info(f"Experiment on {n_sample} subjects. Load data.")
+    tng_data = load_data(
+        params["data"]["data_file"], data_reference["train"], dtype="data"
+    )
+    val_data = load_data(
+        params["data"]["data_file"], data_reference["val"], dtype="data"
+    )
+    test_data = load_data(
+        params["data"]["data_file"], data_reference["test"], dtype="data"
+    )
 
     # training data labels
+    log.info("Create training data labels.")
     X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
         tng_data,
         val_data,
@@ -68,6 +78,7 @@ def main(params: DictConfig) -> None:
     del tng_data
     del val_data
 
+    log.info("Training data labels.")
     # train model
     (
         model,
@@ -106,8 +117,6 @@ def main(params: DictConfig) -> None:
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 
-    log.info("Predicting test set")
-
     # make test labels
     X_test, Y_test = make_seq(
         test_data,
@@ -143,6 +152,7 @@ def main(params: DictConfig) -> None:
     training_losses = pd.DataFrame(losses)
     plt.figure()
     g = lineplot(data=training_losses)
+    g.set_title(f"Training Losses (N={n_sample})")
     g.set_xlabel("Epoc")
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")

@@ -337,6 +337,7 @@ def main():
         print(f"found {qc.shape[0]} subjects passed QC.")
 
         for site_name in all_sites:
+            node_site = f"{abide_version}_site-{site_name}"
             print(site_name)
             subjects_info = _get_subjects_passed_qc(
                 qc, abide_version, site_name
@@ -346,14 +347,15 @@ def main():
                 print("found no valid subjects.")
                 continue
             original_tr = _get_abide_tr(abide_version, site_name)
-
+            valid_subject = []
             with h5py.File(path_tmp, "r") as f:
                 for dset in tqdm(_traverse_datasets(f)):
                     if not _check_subject_pass_qc(dset, subjects):
                         continue
                     dset_name = dset.split("/")[-1]
                     participant_id = dset_name.split("_")[0].split("sub-")[-1]
-                    dset_name = f"{abide_version}_site-{site_name}/sub-{participant_id}/{dset_name}"
+                    valid_subject.append(participant_id)
+                    dset_name = f"{node_site}/sub-{participant_id}/{dset_name}"
                     # resample the time series
                     data = f[dset][:]
                     resampled = _resample_tr(data, original_tr, TARGET_TR)
@@ -364,7 +366,7 @@ def main():
             # populate phenotype data
             with h5py.File(path_concat, "a") as new_f:
                 for participant_id in tqdm(subjects_info):
-                    node = f"{abide_version}_site-{site_name}/sub-{participant_id}"
+                    node = f"{node_site}/sub-{participant_id}"
                     if node in new_f:
                         print("phenotype data")
                         dset_sub = new_f[node]
@@ -374,19 +376,20 @@ def main():
                                 name=field, data=phenotype[field]
                             )
 
-            # dataset metadata
-            with h5py.File(path_concat, "a") as f:
-                node_site = f"{abide_version}_site-{site_name}"
-                if node in f:
+                # dataset metadata
+                if node in new_f:
                     site_list.append(node_site)
                     print("dataset meta data")
-                    node_site = f[node_site]
+                    node_site = new_f[node_site]
                     node_site.attrs["dataset_name"] = abide_version
                     node_site.attrs["diagnosis_name"] = "autism"
                     node_site.attrs["diagnosis_code_control"] = 0
                     node_site.attrs["diagnosis_code_patient"] = 1
                     node_site.attrs["sex_male"] = 1
                     node_site.attrs["sex_female"] = 0
+                    new_f.create_dataset(
+                        f"{node_site}/participant_id", data=valid_subject
+                    )
 
         print("add full dataset list to attribute")
         with h5py.File(path_concat, "a") as f:
