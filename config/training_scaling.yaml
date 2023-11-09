@@ -6,5 +6,5 @@ defaults:
   - data: ukbb
   - hydra: default
 
-torch_device: cuda:0
 verbose: 1
+random_state: 42

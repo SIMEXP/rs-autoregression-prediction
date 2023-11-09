@@ -13,13 +13,12 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 from data.load_data import load_data, load_h5_data_path, split_data_by_site
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from seaborn import lineplot
 from sklearn.metrics import r2_score
-from src.data.load_data import load_params, make_input_labels, make_seq
-from src.models.train_model import train
 
 # A logger for this file
 log = logging.getLogger(__name__)
@@ -28,15 +27,20 @@ log = logging.getLogger(__name__)
 @hydra.main(version_base="1.3", config_path="../config", config_name="train")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
+    from src.data.load_data import load_params, make_input_labels, make_seq
+    from src.models.train_model import train
+
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
-
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    log.info(f"Working on {device}.")
     # organise parameters
     compute_edge_index = params["model"]["model"] == "Chebnet"
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
+    train_param["torch_device"] = device
 
     # load data
     tng_dset, val_dset = instantiate(params["data"]["training"])
@@ -102,7 +106,7 @@ def main(params: DictConfig) -> None:
     del Y_val
     del r2_val
 
-    model = model.to("cpu")
+    model = model.to(params["torch_device"])
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 

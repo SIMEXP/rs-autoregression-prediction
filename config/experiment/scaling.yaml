@@ -6,7 +6,7 @@ lr_thres: 0.001
 weight_decay: 0
 
 scaling:  # training and evaluation
-  _target_: data.load_data.load_ukbb_dset_path
+  _target_: src.data.load_data.load_ukbb_dset_path
   path: inputs/connectomes/ukbb.h5
   atlas_desc: atlas-MIST_desc-197
   n_sample: 100

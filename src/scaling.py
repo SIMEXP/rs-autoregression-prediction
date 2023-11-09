@@ -4,6 +4,7 @@ import logging
 import os
 import pickle as pk
 import re
+import sys
 from math import ceil
 from pathlib import Path
 from typing import List, Tuple, Union
@@ -13,13 +14,18 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from data.load_data import load_data, load_h5_data_path, split_data_by_site
-from hydra.utils import get_original_cwd, instantiate, to_absolute_path
-from omegaconf import DictConfig, OmegaConf
+import submitit
+import torch
+from fmri_autoreg.data.load_data import (
+    load_params,
+    make_input_labels,
+    make_seq,
+)
+from fmri_autoreg.models.train_model import train
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from seaborn import lineplot
 from sklearn.metrics import r2_score
-from src.data.load_data import load_params, make_input_labels, make_seq
-from src.models.train_model import train
 
 # A logger for this file
 log = logging.getLogger(__name__)
@@ -30,7 +36,12 @@ log = logging.getLogger(__name__)
 )
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
+    # import local library here because sumbitit and hydra being weird
+    from src.data.load_data import load_data
+
+    env = submitit.JobEnvironment()
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    log.info(f"Process ID {os.getpid()} in {env}")
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
 
@@ -39,6 +50,10 @@ def main(params: DictConfig) -> None:
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    train_param["torch_device"] = device
+
+    log.info(f"Working on {device}.")
 
     # load data
     n_sample = params["experiment"]["scaling"]["n_sample"]
@@ -113,7 +128,7 @@ def main(params: DictConfig) -> None:
     del Y_val
     del r2_val
 
-    model = model.to("cpu")
+    model = model.to(device)
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 

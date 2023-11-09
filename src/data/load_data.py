@@ -15,6 +15,7 @@ def split_data_by_site(
     test_set: float = 0.25,
     split_type: Union[str, None] = None,
     datasets: Union[List[str], None] = None,
+    random_state: int = 42,
 ) -> Tuple[List[np.ndarray]]:
     """Train-test split with different strategies for multiple datasets.
 
@@ -43,7 +44,7 @@ def split_data_by_site(
     if split_type == "between_site":
         # train test split on the number of sites
         train, test = train_test_split(
-            datasets, test_size=test_set, random_state=42
+            datasets, test_size=test_set, random_state=random_state
         )
         # concat file based on these info
         data_filter = data_filter.split("/")[-1]
@@ -52,7 +53,10 @@ def split_data_by_site(
             for dset in split:
                 cur_site_filter = f"{dset}/*/{data_filter}"
                 data_list = load_h5_data_path(
-                    path=path, task_filter=cur_site_filter, shuffle=True
+                    path=path,
+                    task_filter=cur_site_filter,
+                    shuffle=True,
+                    random_state=random_state,
                 )
                 if i == 0:
                     tng_data += data_list
@@ -70,7 +74,7 @@ def split_data_by_site(
         tng_data, test_data = train_test_split(
             data_list,
             test_size=test_set,
-            random_state=42,
+            random_state=random_state,
             stratify=class_label,
         )
         return tng_data, test_data
@@ -80,7 +84,7 @@ def split_data_by_site(
             path=path, data_filter=data_filter, shuffle=False
         )  # shuffle in the train_test_split
         tng_data, test_data = train_test_split(
-            data_list, test_size=test_set, random_state=42
+            data_list, test_size=test_set, random_state=random_state
         )
         return tng_data, test_data
 
@@ -92,6 +96,7 @@ def load_ukbb_dset_path(
     val_set: float = 0.25,
     test_set: float = 0.25,
     segment: Union[int, List[int]] = -1,
+    random_state: int = 42,
 ) -> Dict:
     """Load time series of UK Biobank.
 
@@ -146,7 +151,7 @@ def load_ukbb_dset_path(
         participant_id, _ = train_test_split(
             participant_id,
             test_size=(1 - total_proportion_sample),
-            random_state=42,
+            random_state=random_state,
         )
 
     # construct path
@@ -163,11 +168,11 @@ def load_ukbb_dset_path(
             data_list.append(cur_sub_path)
     # train-test-val split
     train, test = train_test_split(
-        data_list, test_size=test_set, random_state=42
+        data_list, test_size=test_set, random_state=random_state
     )
     # calculate the proportion of val_set in the training loop
     train, val = train_test_split(
-        train, test_size=val_set / (1 - test_set), random_state=42
+        train, test_size=val_set / (1 - test_set), random_state=random_state
     )
     return {"train": train, "val": val, "test": test}
 
@@ -209,6 +214,7 @@ def load_h5_data_path(
     path: Union[Path, str],
     data_filter: Union[str, None] = None,
     shuffle: bool = False,
+    random_state: int = 42,
 ) -> List[str]:
     """Load dataset path data from HDF5 file.
 
@@ -227,10 +233,8 @@ def load_h5_data_path(
             if data_filter is None or re.search(data_filter, dset):
                 data_list.append(dset)
     if shuffle and data_list:
-        import random
-
-        random.seed(42)
-        random.shuffle(data_list)
+        rng = np.random.default_rng(seed=random_state)
+        data_list = rng.shuffle(data_list)
     return data_list
 
 
