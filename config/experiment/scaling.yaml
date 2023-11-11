@@ -13,3 +13,4 @@ scaling:  # training and evaluation
   val_set: 0.20
   test_set: 0.20
   segment: 1
+  random_state: ${random_state}

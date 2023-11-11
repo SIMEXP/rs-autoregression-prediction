@@ -50,6 +50,9 @@ def main(params: DictConfig) -> None:
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
+    log.info(f"Random seed {params['random_state']}")
+    scaling_param = params["experiment"]["scaling"]
+    scaling_param["random_state"] = params["random_state"]
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     train_param["torch_device"] = device
 
@@ -57,7 +60,6 @@ def main(params: DictConfig) -> None:
 
     # load data
     n_sample = params["experiment"]["scaling"]["n_sample"]
-
     data_reference = instantiate(params["experiment"]["scaling"])
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
