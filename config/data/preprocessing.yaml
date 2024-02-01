@@ -1,4 +1,5 @@
 ---
+standardize: true
 time_stride: 1
 lag: 1
 edge_index_thres: 0.9

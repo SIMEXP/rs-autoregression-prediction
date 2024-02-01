@@ -180,6 +180,7 @@ def load_ukbb_dset_path(
 def load_data(
     path: Union[Path, str],
     h5dset_path: Union[List[str], str],
+    standardize: bool = False,
     dtype: str = "data",
 ) -> List[Union[np.ndarray, str, int, float]]:
     """Load time series or phenotype data from the hdf5 files.
@@ -188,6 +189,8 @@ def load_data(
         path (Union[Path, str]): Path to the hdf5 file.
         h5dset_path (Union[List[str], str]): Path to data inside the
             h5 file.
+        standardize (bool, optional): Whether to standardize the data.
+            Defaults to False. Only applicable to dtype='data'.
         dtype (str, optional): Attribute label for each subject or
             "data" to load the time series. Defaults to "data".
 
@@ -201,6 +204,10 @@ def load_data(
         with h5py.File(path, "r") as h5file:
             for p in h5dset_path:
                 data_list.append(h5file[p][:])
+        if standardize and data_list:
+            means = np.concatenate(data_list, axis=0).mean(axis=0)
+            stds = np.concatenate(data_list, axis=0).std(axis=0)
+            data_list = [(data - means) / stds for data in data_list]
         return data_list
     else:
         with h5py.File(path, "r") as h5file:

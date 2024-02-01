@@ -46,7 +46,7 @@ def main(params: DictConfig) -> None:
     log.info(f"Output directory  : {output_dir}")
 
     # organise parameters
-    compute_edge_index = params["model"]["model"] == "Chebnet"
+    compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
@@ -55,7 +55,7 @@ def main(params: DictConfig) -> None:
     scaling_param["random_state"] = params["random_state"]
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     train_param["torch_device"] = device
-
+    log.info(params["model"]["model"])
     log.info(f"Working on {device}.")
 
     # load data
@@ -71,13 +71,22 @@ def main(params: DictConfig) -> None:
         )
     log.info(f"Experiment on {n_sample} subjects. Load data.")
     tng_data = load_data(
-        params["data"]["data_file"], data_reference["train"], dtype="data"
+        params["data"]["data_file"],
+        data_reference["train"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
     )
     val_data = load_data(
-        params["data"]["data_file"], data_reference["val"], dtype="data"
+        params["data"]["data_file"],
+        data_reference["val"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
     )
     test_data = load_data(
-        params["data"]["data_file"], data_reference["test"], dtype="data"
+        params["data"]["data_file"],
+        data_reference["test"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
     )
 
     # training data labels

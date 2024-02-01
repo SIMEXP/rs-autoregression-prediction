@@ -1,10 +1,10 @@
 ---
 defaults:
   - _self_
-  - model: chebnet
+  - model: linearchebnet
   - experiment: scaling
   - data: ukbb
   - hydra: default
 
-verbose: 1
+verbose: 2
 random_state: 42
