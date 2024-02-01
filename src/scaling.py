@@ -4,6 +4,7 @@ import logging
 import os
 import pickle as pk
 import re
+import sys
 from math import ceil
 from pathlib import Path
 from typing import List, Tuple, Union
@@ -13,10 +14,16 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import submitit
 import torch
-from data.load_data import load_data, load_h5_data_path, split_data_by_site
-from hydra.utils import get_original_cwd, instantiate, to_absolute_path
-from omegaconf import DictConfig, OmegaConf
+from fmri_autoreg.data.load_data import (
+    load_params,
+    make_input_labels,
+    make_seq,
+)
+from fmri_autoreg.models.train_model import train
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from seaborn import lineplot
 from sklearn.metrics import r2_score
 
@@ -24,41 +31,66 @@ from sklearn.metrics import r2_score
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="train")
+@hydra.main(
+    version_base="1.3", config_path="../config", config_name="training_scaling"
+)
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
-    from src.data.load_data import load_params, make_input_labels, make_seq
-    from src.models.train_model import train
+    # import local library here because sumbitit and hydra being weird
+    from src.data.load_data import load_data
 
+    env = submitit.JobEnvironment()
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    log.info(f"Process ID {os.getpid()} in {env}")
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    log.info(f"Working on {device}.")
+
     # organise parameters
-    compute_edge_index = params["model"]["model"] == "Chebnet"
+    compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
+    log.info(f"Random seed {params['random_state']}")
+    scaling_param = params["experiment"]["scaling"]
+    scaling_param["random_state"] = params["random_state"]
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     train_param["torch_device"] = device
+    log.info(params["model"]["model"])
+    log.info(f"Working on {device}.")
 
     # load data
-    tng_dset, val_dset = instantiate(params["data"]["training"])
-    test_dset = instantiate(params["data"]["testing"])
-
-    data_reference = {
-        "train": tng_dset,
-        "validation": val_dset,
-        "test": test_dset,
-    }
+    n_sample = params["experiment"]["scaling"]["n_sample"]
+    data_reference = instantiate(params["experiment"]["scaling"])
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
-
-    tng_data = load_data(params["data"]["data_file"], tng_dset, dtype="data")
-    val_data = load_data(params["data"]["data_file"], val_dset, dtype="data")
-    test_data = load_data(params["data"]["data_file"], test_dset, dtype="data")
+    if n_sample == -1:
+        n_sample = (
+            len(data_reference["train"])
+            + len(data_reference["val"])
+            + len(data_reference["test"])
+        )
+    log.info(f"Experiment on {n_sample} subjects. Load data.")
+    tng_data = load_data(
+        params["data"]["data_file"],
+        data_reference["train"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
+    )
+    val_data = load_data(
+        params["data"]["data_file"],
+        data_reference["val"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
+    )
+    test_data = load_data(
+        params["data"]["data_file"],
+        data_reference["test"],
+        standardize=params["data"]["standardize"],
+        dtype="data",
+    )
 
     # training data labels
+    log.info("Create training data labels.")
     X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
         tng_data,
         val_data,
@@ -72,6 +104,7 @@ def main(params: DictConfig) -> None:
     del tng_data
     del val_data
 
+    log.info("Training data labels.")
     # train model
     (
         model,
@@ -106,11 +139,9 @@ def main(params: DictConfig) -> None:
     del Y_val
     del r2_val
 
-    model = model.to(params["torch_device"])
+    model = model.to(device)
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
-
-    log.info("Predicting test set")
 
     # make test labels
     X_test, Y_test = make_seq(
@@ -147,6 +178,7 @@ def main(params: DictConfig) -> None:
     training_losses = pd.DataFrame(losses)
     plt.figure()
     g = lineplot(data=training_losses)
+    g.set_title(f"Training Losses (N={n_sample})")
     g.set_xlabel("Epoc")
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")

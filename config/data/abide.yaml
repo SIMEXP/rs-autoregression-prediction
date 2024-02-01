@@ -3,18 +3,18 @@ defaults:
   - _self_
   - preprocessing
 
-data_file: inputs/connectomes/processed_connectomes.h5
+data_file: inputs/connectomes/abide.h5
 training:  # training and evaluation
   _target_: data.load_data.split_data_by_site
-  path: inputs/connectomes/processed_connectomes.h5
+  path: inputs/connectomes/abide.h5
   split_type: within_sites  # between_sites or within_sites, or null (fully random)
   test_set: 0.2
   data_filter: abide1.*/*/sub-.*desc-197.*timeseries
 testing:
   _target_: data.load_data.load_h5_data_path
-  path: inputs/connectomes/processed_connectomes.h5
+  path: inputs/connectomes/abide.h5
   data_filter: abide2.*/*/sub-.*desc-197.*timeseries
   shuffle: true
 predicition:
-  path: inputs/connectomes/processed_connectomes.h5
+  path: inputs/connectomes/abide.h5
   data_filter: abide.*/*/sub-.*desc-197.*timeseries
