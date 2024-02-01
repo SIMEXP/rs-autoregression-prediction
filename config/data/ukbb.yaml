@@ -1,0 +1,6 @@
+---
+defaults:
+  - _self_
+  - preprocessing
+
+data_file: inputs/connectomes/ukbb.h5

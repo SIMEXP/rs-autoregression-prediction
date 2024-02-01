@@ -3,7 +3,7 @@
 #!/bin/bash
 
 TORCH=1.13.1
-CUDA=cpu
+CUDA=cu117  # options: cpu, cu116, cu117
 
 pip install --upgrade pip
 pip install --no-index torch==${TORCH}
@@ -14,18 +14,17 @@ pip install --no-index \
     torch-cluster==1.6.1+computecanada \
     torch-spline-conv==1.2.2+computecanada \
     torch-geometric==2.3.1+computecanada \
-    numpy==1.23.0+computecanada \
+    numpy==1.23.0 \
     cython
 # fmri-autoreg dependencies - updated 2023-11-07
-pip install pandas==1.3.0 --no-binary :all:
 pip install h5py==3.6.0 \
     nilearn==0.9.2 \
     tqdm==4.64.1 \
-    darts==0.16.0
+    darts==0.16.0 \
+    pandas==1.3.0
 pip install -e src/fmri_autoreg
 
 module load rust
-
 pip install -r env/requirements-dev.txt
 pip install -r env/requirements.txt
 pre-commit install
