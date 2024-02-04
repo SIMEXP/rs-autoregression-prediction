@@ -56,7 +56,7 @@ def main(params: DictConfig) -> None:
     # test_dset = instantiate(params["data"]["testing"])
 
     # load ukbb data
-    data_reference = instantiate(params["experiment"]["split"])
+    data_reference = instantiate(params["data"]["split"])
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
     n_sample = (
