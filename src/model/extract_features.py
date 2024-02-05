@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-from data.load_data import load_data
 from fmri_autoreg.data.load_data import make_input_labels
+from src.data.load_data import load_data
 from torch_geometric.nn import ChebConv
 
 
