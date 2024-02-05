@@ -11,11 +11,9 @@ import hydra
 import numpy as np
 import pandas as pd
 import torch
-from data.load_data import load_data
 from fmri_autoreg.models.predict_model import predict_horizon
 from fmri_autoreg.tools import check_path, load_model
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
-from model.extract_features import extract_convlayers
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
@@ -23,6 +21,10 @@ from tqdm import tqdm
 @hydra.main(version_base="1.3", config_path="../config", config_name="extract")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
+
+    from src.data.load_data import load_data
+    from src.model.extract_features import extract_convlayers
+
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     print(f"Working on {device}.")
 
