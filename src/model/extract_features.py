@@ -31,6 +31,7 @@ def extract_convlayers(
     compute_edge_index,
     thres,
 ):
+    """Extract the last conv layer from the pretrained model."""
     # load data
     ts = load_data(data_file, h5_dset_path, dtype="data")
     X_ts = make_input_labels(
@@ -55,12 +56,11 @@ def extract_convlayers(
 
     # pass the data through pretrained model
     _ = model(torch.tensor(X_ts))
-    conv_layers = np.array(
-        [_module_output_to_numpy(o) for o in save_output.outputs]
-    )  # get all layers (layer, batch, node, feature F)
+    conv_layers = _module_output_to_numpy(save_output.outputs[-1])
+    # get last layers (batch, node, feature F)
     # first layer is nodes, since the rest will be compressed
-    # (node, batch, layer, feature F)
-    conv_layers = np.swapaxes(conv_layers, 0, 2)
+    # (node, batch, feature F)
+    conv_layers = np.swapaxes(conv_layers, 0, 1)
     # remove the hooks
     for handle in hook_handles:
         handle.remove()
