@@ -16,6 +16,9 @@ pip install --no-index \
     torch-geometric==2.3.1+computecanada \
     numpy==1.23.0 \
     cython
+pip install thop
+pip install torchinfo
+
 # fmri-autoreg dependencies - updated 2023-11-07
 pip install h5py==3.6.0 \
     nilearn==0.9.2 \
