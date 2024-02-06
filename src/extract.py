@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
+log = logging.getLogger(__name__)
+
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="extract")
 def main(params: DictConfig) -> None:
@@ -26,13 +29,13 @@ def main(params: DictConfig) -> None:
     from src.model.extract_features import extract_convlayers
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    print(f"Working on {device}.")
+    log.info(f"Working on {device}.")
 
     compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    print(f"Current working directory : {os.getcwd()}")
-    print(f"Output directory  : {output_dir}")
+    log.info(f"Current working directory : {os.getcwd()}")
+    log.info(f"Output directory  : {output_dir}")
 
     model_path = Path(params["model_path"])
 
@@ -60,7 +63,7 @@ def main(params: DictConfig) -> None:
                 f.attrs["horizon"] = params["horizon"]
 
     # generate feature for each subject
-    print("Predicting t+1 of each subject and extract convo layers")
+    log.info("Predicting t+1 of each subject and extract convo layers")
     for h5_dset_path in tqdm(data):
         # get the prediction of t+1
         r2, Z, Y = predict_horizon(
@@ -88,6 +91,7 @@ def main(params: DictConfig) -> None:
             lag=params["data"]["lag"],
             compute_edge_index=compute_edge_index,
             thres=thres,
+            device=device,
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:

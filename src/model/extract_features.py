@@ -17,8 +17,8 @@ class SaveOutput:
         self.outputs = []
 
 
-def _module_output_to_numpy(tensor):
-    return tensor.detach().to("cpu").numpy()
+def _module_output_to_numpy(tensor, device):
+    return tensor.detach().to(device).numpy()
 
 
 def extract_convlayers(
@@ -30,6 +30,7 @@ def extract_convlayers(
     lag,
     compute_edge_index,
     thres,
+    device,
 ):
     """Extract the last conv layer from the pretrained model."""
     # load data
@@ -56,7 +57,7 @@ def extract_convlayers(
 
     # pass the data through pretrained model
     _ = model(torch.tensor(X_ts))
-    conv_layers = _module_output_to_numpy(save_output.outputs[-1])
+    conv_layers = _module_output_to_numpy(save_output.outputs[-1], device)
     # get last layers (batch, node, feature F)
     # first layer is nodes, since the rest will be compressed
     # (node, batch, feature F)
