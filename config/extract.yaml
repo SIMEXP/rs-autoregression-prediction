@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - train
-  - hydra: extract
+  - override hydra: extract
 
 horizon: 1
 # passing model path is necessary for evaluation
