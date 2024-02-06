@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import torch
 from fmri_autoreg.models.predict_model import predict_horizon
-from fmri_autoreg.tools import check_path, load_model
+from fmri_autoreg.tools import load_model
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
@@ -45,10 +45,6 @@ def main(params: DictConfig) -> None:
     )
     (Path(output_dir) / "figures").mkdir(exist_ok=True)
 
-    model = load_model(model_path)
-    if isinstance(model, torch.nn.Module):
-        model.to(torch.device(device)).eval()
-
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
         subj = json.load(f)
@@ -63,7 +59,10 @@ def main(params: DictConfig) -> None:
                 f.attrs["horizon"] = params["horizon"]
 
     # generate feature for each subject
-    log.info("Predicting t+1 of each subject and extract convo layers")
+    log.info("Predicting t+1 of each subject")
+    model = load_model(model_path)
+    if isinstance(model, torch.nn.Module):
+        model.to(torch.device(device)).eval()
     for h5_dset_path in tqdm(data):
         # get the prediction of t+1
         r2, Z, Y = predict_horizon(
@@ -82,6 +81,11 @@ def main(params: DictConfig) -> None:
                 new_ds_path = h5_dset_path.replace("timeseries", key)
                 f[new_ds_path] = value
 
+    log.info("extract convo layers")
+    model = load_model(model_path)
+    if isinstance(model, torch.nn.Module):
+        model.to(torch.device(device)).eval()
+    for h5_dset_path in tqdm(data):
         convlayers = extract_convlayers(
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
@@ -91,7 +95,7 @@ def main(params: DictConfig) -> None:
             lag=params["data"]["lag"],
             compute_edge_index=compute_edge_index,
             thres=thres,
-            device=device,
+            device=torch.device(device),
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:

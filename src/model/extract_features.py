@@ -56,7 +56,7 @@ def extract_convlayers(
             hook_handles.append(handle)
 
     # pass the data through pretrained model
-    _ = model(torch.tensor(X_ts))
+    _ = model(torch.tensor(X_ts).to(device))
     conv_layers = _module_output_to_numpy(save_output.outputs[-1], device)
     # get last layers (batch, node, feature F)
     # first layer is nodes, since the rest will be compressed
