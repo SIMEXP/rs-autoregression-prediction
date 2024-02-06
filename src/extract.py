@@ -34,7 +34,7 @@ def main(params: DictConfig) -> None:
     print(f"Current working directory : {os.getcwd()}")
     print(f"Output directory  : {output_dir}")
 
-    model_path = params["model_path"]
+    model_path = Path(params["model_path"])
 
     output_conv_path = Path(output_dir) / "feature_convlayers.h5"
     output_horizon_path = (
