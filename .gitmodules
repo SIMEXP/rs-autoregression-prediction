@@ -1,3 +1,0 @@
-[submodule "src/fmri-autoreg"]
-	path = src/fmri-autoreg
-	url = git@github.com:htwangtw/fmri-autoreg.git
