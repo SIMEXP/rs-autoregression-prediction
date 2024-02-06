@@ -36,9 +36,9 @@ def main(params: DictConfig) -> None:
 
     model_path = params["model_path"]
 
-    output_conv_path = output_dir / "feature_convlayers.h5"
+    output_conv_path = Path(output_dir) / "feature_convlayers.h5"
     output_horizon_path = (
-        output_dir / f"feature_horizon-{params['horizon']}.h5"
+        Path(output_dir) / f"feature_horizon-{params['horizon']}.h5"
     )
     (Path(output_dir) / "figures").mkdir(exist_ok=True)
 
