@@ -59,10 +59,11 @@ def main(params: DictConfig) -> None:
                 f.attrs["horizon"] = params["horizon"]
 
     # generate feature for each subject
-    log.info("Predicting t+1 of each subject")
+    log.info("Load model")
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
+    log.info("Predicting t+1 of each subject")
     for h5_dset_path in tqdm(data):
         # get the prediction of t+1
         r2, Z, Y = predict_horizon(
@@ -70,7 +71,7 @@ def main(params: DictConfig) -> None:
             seq_length=params["model"]["seq_length"],
             horizon=params["horizon"],
             data_file=params["data"]["data_file"],
-            task_filter=h5_dset_path,
+            dset_path=h5_dset_path,
             batch_size=params["data"]["batch_size"],
             stride=params["data"]["time_stride"],
             standardize=False,
