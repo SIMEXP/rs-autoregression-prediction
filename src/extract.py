@@ -96,7 +96,6 @@ def main(params: DictConfig) -> None:
             lag=params["data"]["lag"],
             compute_edge_index=compute_edge_index,
             thres=thres,
-            device=torch.device(device),
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:
