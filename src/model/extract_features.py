@@ -11,14 +11,14 @@ class SaveOutput:
 
     def __call__(self, module, module_in, module_out):
         layer_activations = module_out
-        self.outputs.append(layer_activations.detach().clone())
+        self.outputs.append(layer_activations.detach().to("cpu").clone())
 
     def clear(self):
         self.outputs = []
 
 
-def _module_output_to_numpy(tensor, device):
-    return tensor.detach().to(device).numpy()
+def _module_output_to_numpy(tensor):
+    return tensor.detach().to("cpu").numpy()
 
 
 def extract_convlayers(
