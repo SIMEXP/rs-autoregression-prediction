@@ -30,7 +30,6 @@ def extract_convlayers(
     lag,
     compute_edge_index,
     thres,
-    device,
 ):
     """Extract the last conv layer from the pretrained model."""
     # load data
@@ -54,10 +53,10 @@ def extract_convlayers(
         if isinstance(module, ChebConv):
             handle = module.register_forward_hook(save_output)
             hook_handles.append(handle)
-
+    device = next(model.parameters()).device
     # pass the data through pretrained model
     _ = model(torch.tensor(X_ts).to(device))
-    conv_layers = _module_output_to_numpy(save_output.outputs[-1], device)
+    conv_layers = _module_output_to_numpy(save_output.outputs[-1])
     # get last layers (batch, node, feature F)
     # first layer is nodes, since the rest will be compressed
     # (node, batch, feature F)
