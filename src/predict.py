@@ -136,7 +136,7 @@ def main(params: DictConfig) -> None:
             data = convlayers
         labels = df_phenotype[label].values
         log.info(f"data shape: {data.shape}")
-        log.info(f"label shape: {label.shape}")
+        log.info(f"label shape: {labels.shape}")
         dataset = {"data": data, "label": labels}
         return dataset
 
