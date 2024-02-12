@@ -103,12 +103,6 @@ def main(params: DictConfig) -> None:
         participant_id = list(set(participant_id) & set(df_phenotype.index))
         # get extra subjects in participant_id
         # remove extra subjects in dset_path
-        dset_path = [
-            p
-            for p in dset_path
-            if p.split("/")[-1].split("sub-")[-1].split("_")[0]
-            in participant_id
-        ]
         log.info(
             f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
         )
@@ -120,12 +114,12 @@ def main(params: DictConfig) -> None:
         )
         dataset = {}
         for set_name, subjects in zip(["tng", "test"], [tng_idx, test_idx]):
-            dset_path = [
+            set_dset_path = [
                 p
                 for p in dset_path
                 if p.split("/")[-1].split("sub-")[-1].split("_")[0] in subjects
             ]
-            data = load_data(data_file, dset_path, dtype="data")
+            data = load_data(data_file, set_dset_path, dtype="data")
             if "r2" in measure:
                 data = np.concatenate(data).squeeze()
                 if measure == "avgr2":
@@ -143,6 +137,7 @@ def main(params: DictConfig) -> None:
                     convlayers.append(d)
                 data = convlayers
             label = df_phenotype.loc[subjects, label]
+            log.info(f"{set_name} data shape: {data.shape}")
             dataset[set_name] = {"data": data, "label": label}
         return dataset
 
