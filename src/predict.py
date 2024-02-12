@@ -134,7 +134,7 @@ def main(params: DictConfig) -> None:
                 d = m(d).flatten().numpy()
                 convlayers.append(d)
             data = convlayers
-        labels = df_phenotype.loc[subject, label].values
+        labels = df_phenotype.loc[subject, label]
         log.info(f"data shape: {data.shape}")
         log.info(f"label shape: {labels.shape}")
         dataset = {"data": data, "label": labels}
