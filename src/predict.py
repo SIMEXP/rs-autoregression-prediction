@@ -63,7 +63,8 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    from src.data.load_data import load_data, load_h5_data_path
+    # from src.data.load_data import load_data, load_h5_data_path
+    from data.load_data import load_data, load_h5_data_path
 
     # get connectomes
     def get_model_data(
@@ -108,15 +109,15 @@ def main(params: DictConfig) -> None:
         )
 
         dataset = {}
-
         for p in dset_path:
             subject = p.split("/")[-1].split("sub-")[-1].split("_")[0]
             if subject in participant_id:
-                df_phenotype[subject, "path"] = p
-        df_phenotype["path"].values.tolist()
-        data = load_data(
-            data_file, df_phenotype["path"].values.tolist(), dtype="data"
-        )
+                df_phenotype.loc[subject, "path"] = p
+        selected_path = df_phenotype.loc[
+            participant_id, "path"
+        ].values.tolist()
+        log.info(len(selected_path))
+        data = load_data(data_file, selected_path, dtype="data")
         if "r2" in measure:
             data = np.concatenate(data).squeeze()
             if measure == "avgr2":
@@ -135,6 +136,7 @@ def main(params: DictConfig) -> None:
             data = convlayers
         labels = df_phenotype[label].values
         log.info(f"data shape: {data.shape}")
+        log.info(f"label shape: {label.shape}")
         dataset = {"data": data, "label": labels}
         return dataset
 
