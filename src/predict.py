@@ -14,7 +14,6 @@ import pandas as pd
 import seaborn as sns
 import torch
 import torch.nn as nn
-from data.load_data import load_data, load_h5_data_path
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from nilearn.connectome import ConnectivityMeasure
 from omegaconf import DictConfig, OmegaConf
@@ -25,6 +24,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
+from src.data.load_data import load_data, load_h5_data_path
 
 
 # get connectomes
@@ -147,15 +147,15 @@ log = logging.getLogger(__name__)
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    convlayer_file = params["convlayers_path"]
+    convlayers_path = params["convlayers_path"]
     feature_t1_file = (
-        convlayer_file.parent / f"feature_horizon-{params['horizon']}.h5"
+        convlayers_path.parent / f"feature_horizon-{params['horizon']}.h5"
     )
     model_path = Path(params["model_path"])
     phenotype_file = Path(params["phenotype_file"])
 
     log.info(feature_t1_file)
-    log.info(convlayer_file)
+    log.info(convlayers_path)
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
@@ -165,7 +165,7 @@ def main(params: DictConfig) -> None:
         if "r2" in key:
             baseline_details[key]["data_file"] = feature_t1_file
         elif "conv" in key:
-            baseline_details[key]["data_file"] = convlayer_file
+            baseline_details[key]["data_file"] = convlayers_path
         elif "connectome" in key:
             baseline_details[key]["data_file"] = params["data"]["data_file"]
             baseline_details[key]["data_file_pattern"] = subj["test"]
