@@ -107,38 +107,35 @@ def main(params: DictConfig) -> None:
             f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
         )
 
-        # 1:4 split dset_path
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        tng_idx, test_idx = next(
-            skf.split(participant_id, df_phenotype.loc[participant_id, label])
-        )
         dataset = {}
-        for set_name, subjects in zip(["tng", "test"], [tng_idx, test_idx]):
-            set_dset_path = [
-                p
-                for p in dset_path
-                if p.split("/")[-1].split("sub-")[-1].split("_")[0] in subjects
-            ]
-            data = load_data(data_file, set_dset_path, dtype="data")
-            if "r2" in measure:
-                data = np.concatenate(data).squeeze()
-                if measure == "avgr2":
-                    data = data.mean(axis=1).reshape(-1, 1)
-                data = StandardScaler().fit_transform(data)
 
-            if measure == "connectome":
-                data = cm.fit_transform(data)
+        for p in dset_path:
+            subject = p.split("/")[-1].split("sub-")[-1].split("_")[0]
+            if subject in participant_id:
+                df_phenotype[subject, "path"] = p
+        df_phenotype["path"].values.tolist()
+        data = load_data(
+            data_file, df_phenotype["path"].values.tolist(), dtype="data"
+        )
+        if "r2" in measure:
+            data = np.concatenate(data).squeeze()
+            if measure == "avgr2":
+                data = data.mean(axis=1).reshape(-1, 1)
+            data = StandardScaler().fit_transform(data)
 
-            if "conv" in measure:
-                convlayers = []
-                for d in data:
-                    d = torch.tensor(d, dtype=torch.float32)
-                    d = m(d).flatten().numpy()
-                    convlayers.append(d)
-                data = convlayers
-            label = df_phenotype.loc[subjects, label]
-            log.info(f"{set_name} data shape: {data.shape}")
-            dataset[set_name] = {"data": data, "label": label}
+        if measure == "connectome":
+            data = cm.fit_transform(data)
+
+        if "conv" in measure:
+            convlayers = []
+            for d in data:
+                d = torch.tensor(d, dtype=torch.float32)
+                d = m(d).flatten().numpy()
+                convlayers.append(d)
+            data = convlayers
+        labels = df_phenotype[label].values
+        log.info(f"data shape: {data.shape}")
+        dataset = {"data": data, "label": labels}
         return dataset
 
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -190,7 +187,6 @@ def main(params: DictConfig) -> None:
                 baseline_details[measure]["data_file_pattern"],
                 shuffle=True,
             )
-
         dataset = get_model_data(
             baseline_details[measure]["data_file"],
             dset_path=dset_path,
@@ -198,13 +194,18 @@ def main(params: DictConfig) -> None:
             measure=measure,
             label="sex",
         )
-        acc = []
+
+        sfk = StratifiedKFold(n_splits=5, shuffle=True)
+        folds = sfk.split(dataset["data"], dataset["label"])
         for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
-            clf.fit(dataset["tng"]["data"], dataset["tng"]["label"])
-            test_pred = clf.predict(dataset["test"]["data"])
-            acc_score = accuracy_score(dataset["test"]["label"], test_pred)
-            acc.append(acc_score)
-            print(f"{clf_name} accuracy: {acc_score:.3f}")
+            clf_acc = []
+            for tng, tst in folds:
+                clf.fit(dataset["data"][tng], dataset["label"][tng])
+                test_pred = clf.predict(dataset["data"][tst])
+                acc_score = accuracy_score(dataset["label"][tst], test_pred)
+                clf_acc.append(acc_score)
+                print(f"{clf_name} accuracy: {acc_score:.3f}")
+            acc = np.mean(clf_acc)
 
         baseline = pd.DataFrame(
             {
