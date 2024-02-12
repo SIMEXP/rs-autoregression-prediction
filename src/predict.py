@@ -24,89 +24,6 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
-from src.data.load_data import load_data, load_h5_data_path
-
-
-# get connectomes
-def get_model_data(
-    data_file, dset_path, phenotype_file, measure="connectome", label="sex"
-):
-    if measure not in [
-        "connectome",
-        "r2map",
-        "avgr2",
-        "conv_max",
-        "conv_avg",
-        "conv_std",
-    ]:
-        raise NotImplementedError(
-            "measure must be one of 'connectome', 'r2map', 'avgr2'"
-        )
-    if measure == "connectome":
-        cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-    elif measure == "conv_max":
-        m = nn.AdaptiveMaxPool3d((1, 1, 1))
-    elif measure == "conv_avg":
-        m = nn.AdaptiveAvgPool3d((1, 1, 1))
-    elif measure == "conv_std":
-        m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
-
-    participant_id = [
-        p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
-    ]
-    n_total = len(participant_id)
-    df_phenotype = pd.read_csv(
-        phenotype_file,
-        sep="\t",
-        dtype={"participant_id": str, "age": float, "sex": int},
-    )
-    df_phenotype = df_phenotype.set_index("participant_id")
-    # get the common subject in participant_id and df_phenotype
-    participant_id = list(set(participant_id) & set(df_phenotype.index))
-    # get extra subjects in participant_id
-    # remove extra subjects in dset_path
-    dset_path = [
-        p
-        for p in dset_path
-        if p.split("/")[-1].split("sub-")[-1].split("_")[0] in participant_id
-    ]
-    log.info(
-        f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
-    )
-
-    # 1:4 split dset_path
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    tng_idx, test_idx = next(
-        skf.split(participant_id, df_phenotype.loc[participant_id, label])
-    )
-    dataset = {}
-    for set_name, subjects in zip(["tng", "test"], [tng_idx, test_idx]):
-        dset_path = [
-            p
-            for p in dset_path
-            if p.split("/")[-1].split("sub-")[-1].split("_")[0] in subjects
-        ]
-        data = load_data(data_file, dset_path, dtype="data")
-        if "r2" in measure:
-            data = np.concatenate(data).squeeze()
-            if measure == "avgr2":
-                data = data.mean(axis=1).reshape(-1, 1)
-            data = StandardScaler().fit_transform(data)
-
-        if measure == "connectome":
-            data = cm.fit_transform(data)
-
-        if "conv" in measure:
-            convlayers = []
-            for d in data:
-                d = torch.tensor(d, dtype=torch.float32)
-                d = m(d).flatten().numpy()
-                convlayers.append(d)
-            data = convlayers
-        label = df_phenotype.loc[subjects, label]
-        dataset[set_name] = {"data": data, "label": label}
-    return dataset
-
 
 baseline_details = {
     "connectome": {
@@ -146,6 +63,89 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
+    from src.data.load_data import load_data, load_h5_data_path
+
+    # get connectomes
+    def get_model_data(
+        data_file, dset_path, phenotype_file, measure="connectome", label="sex"
+    ):
+        if measure not in [
+            "connectome",
+            "r2map",
+            "avgr2",
+            "conv_max",
+            "conv_avg",
+            "conv_std",
+        ]:
+            raise NotImplementedError(
+                "measure must be one of 'connectome', 'r2map', 'avgr2'"
+            )
+        if measure == "connectome":
+            cm = ConnectivityMeasure(kind="correlation", vectorize=True)
+        elif measure == "conv_max":
+            m = nn.AdaptiveMaxPool3d((1, 1, 1))
+        elif measure == "conv_avg":
+            m = nn.AdaptiveAvgPool3d((1, 1, 1))
+        elif measure == "conv_std":
+            m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
+
+        participant_id = [
+            p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
+        ]
+        n_total = len(participant_id)
+        df_phenotype = pd.read_csv(
+            phenotype_file,
+            sep="\t",
+            dtype={"participant_id": str, "age": float, "sex": int},
+        )
+        df_phenotype = df_phenotype.set_index("participant_id")
+        # get the common subject in participant_id and df_phenotype
+        participant_id = list(set(participant_id) & set(df_phenotype.index))
+        # get extra subjects in participant_id
+        # remove extra subjects in dset_path
+        dset_path = [
+            p
+            for p in dset_path
+            if p.split("/")[-1].split("sub-")[-1].split("_")[0]
+            in participant_id
+        ]
+        log.info(
+            f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
+        )
+
+        # 1:4 split dset_path
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        tng_idx, test_idx = next(
+            skf.split(participant_id, df_phenotype.loc[participant_id, label])
+        )
+        dataset = {}
+        for set_name, subjects in zip(["tng", "test"], [tng_idx, test_idx]):
+            dset_path = [
+                p
+                for p in dset_path
+                if p.split("/")[-1].split("sub-")[-1].split("_")[0] in subjects
+            ]
+            data = load_data(data_file, dset_path, dtype="data")
+            if "r2" in measure:
+                data = np.concatenate(data).squeeze()
+                if measure == "avgr2":
+                    data = data.mean(axis=1).reshape(-1, 1)
+                data = StandardScaler().fit_transform(data)
+
+            if measure == "connectome":
+                data = cm.fit_transform(data)
+
+            if "conv" in measure:
+                convlayers = []
+                for d in data:
+                    d = torch.tensor(d, dtype=torch.float32)
+                    d = m(d).flatten().numpy()
+                    convlayers.append(d)
+                data = convlayers
+            label = df_phenotype.loc[subjects, label]
+            dataset[set_name] = {"data": data, "label": label}
+        return dataset
+
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     convlayers_path = params["convlayers_path"]
     feature_t1_file = (
