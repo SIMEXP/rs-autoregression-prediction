@@ -147,7 +147,7 @@ def main(params: DictConfig) -> None:
         return dataset
 
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    convlayers_path = params["convlayers_path"]
+    convlayers_path = Path(params["convlayers_path"])
     feature_t1_file = (
         convlayers_path.parent / f"feature_horizon-{params['horizon']}.h5"
     )
