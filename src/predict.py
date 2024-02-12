@@ -2,6 +2,8 @@
 Execute at the root of the repo, not in the code directory.
 """
 import argparse
+import json
+import logging
 from pathlib import Path
 
 import h5py
@@ -27,7 +29,7 @@ from sklearn.svm import LinearSVC
 
 # get connectomes
 def get_model_data(
-    data_file, tng_dset_path, test_dset_path, measure="connectome"
+    data_file, dset_path, phenotype_file, measure="connectome", label="sex"
 ):
     if measure not in [
         "connectome",
@@ -49,10 +51,41 @@ def get_model_data(
     elif measure == "conv_std":
         m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
 
+    participant_id = [
+        p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
+    ]
+    n_total = len(participant_id)
+    df_phenotype = pd.read_csv(
+        phenotype_file,
+        sep="\t",
+        dtype={"participant_id": str, "age": float, "sex": int},
+    )
+    df_phenotype = df_phenotype.set_index("participant_id")
+    # get the common subject in participant_id and df_phenotype
+    participant_id = list(set(participant_id) & set(df_phenotype.index))
+    # get extra subjects in participant_id
+    # remove extra subjects in dset_path
+    dset_path = [
+        p
+        for p in dset_path
+        if p.split("/")[-1].split("sub-")[-1].split("_")[0] in participant_id
+    ]
+    log.info(
+        f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
+    )
+
+    # 1:4 split dset_path
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    tng_idx, test_idx = next(
+        skf.split(participant_id, df_phenotype.loc[participant_id, label])
+    )
     dataset = {}
-    for set_name, dset_path in zip(
-        ["tng", "test"], [tng_dset_path, test_dset_path]
-    ):
+    for set_name, subjects in zip(["tng", "test"], [tng_idx, test_idx]):
+        dset_path = [
+            p
+            for p in dset_path
+            if p.split("/")[-1].split("sub-")[-1].split("_")[0] in subjects
+        ]
         data = load_data(data_file, dset_path, dtype="data")
         if "r2" in measure:
             data = np.concatenate(data).squeeze()
@@ -70,9 +103,7 @@ def get_model_data(
                 d = m(d).flatten().numpy()
                 convlayers.append(d)
             data = convlayers
-
-        label = load_data(data_file, dset_path, dtype="diagnosis")
-
+        label = df_phenotype.loc[subjects, label]
         dataset[set_name] = {"data": data, "label": label}
     return dataset
 
@@ -110,6 +141,8 @@ baseline_details = {
     },
 }
 
+log = logging.getLogger(__name__)
+
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
@@ -118,9 +151,15 @@ def main(params: DictConfig) -> None:
     feature_t1_file = (
         convlayer_file.parent / f"feature_horizon-{params['horizon']}.h5"
     )
+    model_path = Path(params["model_path"])
+    phenotype_file = Path(params["phenotype_file"])
 
-    print(feature_t1_file)
-    print(convlayer_file)
+    log.info(feature_t1_file)
+    log.info(convlayer_file)
+
+    # load test set subject path from the training
+    with open(model_path.parent / "train_test_split.json", "r") as f:
+        subj = json.load(f)
 
     for key in baseline_details:
         if "r2" in key:
@@ -129,9 +168,7 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file"] = convlayer_file
         elif "connectome" in key:
             baseline_details[key]["data_file"] = params["data"]["data_file"]
-            baseline_details[key]["data_file_pattern"] = params["data"][
-                "predicition"
-            ]["data_filter"]
+            baseline_details[key]["data_file_pattern"] = subj["test"]
         else:
             pass
 
@@ -148,21 +185,23 @@ def main(params: DictConfig) -> None:
 
     baselines_df = []
 
-    print("Train on ABIDE 1, Test on ABIDE 2")
     for measure in baseline_details:
         print(measure)
-        dset_path = load_h5_data_path(
-            baseline_details[measure]["data_file"],
-            baseline_details[measure]["data_file_pattern"],
-            shuffle=True,
-        )
-        tng_path = [p for p in dset_path if "abide1" in p]
-        test_path = [p for p in dset_path if "abide2" in p]
+        if measure == "connectome":
+            dset_path = baseline_details[measure]["data_file_pattern"]
+        else:
+            dset_path = load_h5_data_path(
+                baseline_details[measure]["data_file"],
+                baseline_details[measure]["data_file_pattern"],
+                shuffle=True,
+            )
+
         dataset = get_model_data(
             baseline_details[measure]["data_file"],
-            tng_dset_path=tng_path,
-            test_dset_path=test_path,
+            dset_path=dset_path,
+            phenotype_file=phenotype_file,
             measure=measure,
+            label="sex",
         )
         acc = []
         for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
@@ -181,24 +220,26 @@ def main(params: DictConfig) -> None:
         )
         baselines_df.append(baseline)
 
-    stats_path = (
-        params["feature_path"] / f"feature_horizon-{params['horizon']}.tsv"
-    )
-    print("Plot r2 mean results quickly.")
-    # quick plotting
-    df_for_stats = pd.read_csv(stats_path, sep="\t")
-    df_for_stats = df_for_stats[
-        (df_for_stats.r2mean > -1e16)
-    ]  # remove outliers
-    plt.figure()
-    g = boxplot(x="site", y="r2mean", hue="diagnosis", data=df_for_stats)
-    g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "diagnosis_by_sites.png")
+    # stats_path = (
+    #     params["feature_path"] /
+    #      f"feature_horizon-{params['horizon']}.tsv"
+    # )
+    # print("Plot r2 mean results quickly.")
+    # # quick plotting
+    # df_for_stats = pd.read_csv(stats_path, sep="\t")
+    # df_for_stats = df_for_stats[
+    #     (df_for_stats.r2mean > -1e16)
+    # ]  # remove outliers
+    # plt.figure()
+    # g = boxplot(x="site", y="r2mean",
+    #             hue="diagnosis", data=df_for_stats)
+    # g.set_xticklabels(g.get_xticklabels(), rotation=90)
+    # plt.savefig(output_dir / "diagnosis_by_sites.png")
 
-    plt.figure()
-    g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
-    g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "sex_by_sites.png")
+    # plt.figure()
+    # g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
+    # g.set_xticklabels(g.get_xticklabels(), rotation=90)
+    # plt.savefig(output_dir / "sex_by_sites.png")
 
     # plotting
     baselines_df = pd.concat(
@@ -231,9 +272,7 @@ def main(params: DictConfig) -> None:
     )
     plt.ylim(0.4, 0.7)
     plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
-    plt.title(
-        "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
-    )
+    plt.title("Baseline test accuracy")
     plt.tight_layout()
     plt.savefig(output_dir / "simple_classifiers.png")
 

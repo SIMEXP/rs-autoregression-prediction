@@ -43,7 +43,6 @@ def main(params: DictConfig) -> None:
     output_horizon_path = (
         Path(output_dir) / f"feature_horizon-{params['horizon']}.h5"
     )
-    (Path(output_dir) / "figures").mkdir(exist_ok=True)
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
