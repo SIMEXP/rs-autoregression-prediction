@@ -241,7 +241,7 @@ def load_h5_data_path(
                 data_list.append(dset)
     if shuffle and data_list:
         rng = np.random.default_rng(seed=random_state)
-        data_list = rng.shuffle(data_list)
+        rng.shuffle(data_list)
     return data_list
 
 

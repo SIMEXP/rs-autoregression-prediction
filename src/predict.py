@@ -165,7 +165,7 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file_pattern"] = subj["test"]
         else:
             pass
-
+    log.info(baseline_details)
     # four baseline models
     svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
     lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
@@ -181,6 +181,7 @@ def main(params: DictConfig) -> None:
 
     for measure in baseline_details:
         log.info(f"Start training {measure}")
+        log.info(f"Load data {baseline_details[measure]['data_file']}")
         if measure == "connectome":
             dset_path = baseline_details[measure]["data_file_pattern"]
         else:
@@ -188,6 +189,7 @@ def main(params: DictConfig) -> None:
                 baseline_details[measure]["data_file"],
                 baseline_details[measure]["data_file_pattern"],
                 shuffle=True,
+                random_state=params["random_state"],
             )
         log.info(f"found {len(dset_path)} subjects with {measure} data.")
 
