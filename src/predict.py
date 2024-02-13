@@ -123,7 +123,7 @@ def main(params: DictConfig) -> None:
             label="sex",
             log=log,
         )
-
+        log.info("Start training...")
         sfk = StratifiedKFold(n_splits=5, shuffle=True)
         folds = sfk.split(dataset["data"], dataset["label"])
         average_performance = {clf_name: [] for clf_name in clf_names}
