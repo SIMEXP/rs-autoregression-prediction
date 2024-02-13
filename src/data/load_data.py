@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -6,7 +7,12 @@ from typing import Dict, List, Tuple, Union
 
 import h5py
 import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+from nilearn.connectome import ConnectivityMeasure
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 
 def split_data_by_site(
@@ -261,3 +267,113 @@ def _traverse_datasets(hdf_file):
 
     for path, _ in h5py_dataset_iterator(hdf_file):
         yield path
+
+
+def get_model_data(
+    data_file: Union[Path, str],
+    dset_path: List[str],
+    phenotype_file: Union[Path, str],
+    measure: str = "connectome",
+    label: str = "sex",
+    log: logging = logging,
+) -> Dict[str, np.ndarray]:
+    """Get the data from pretrained model for the downstrean task.
+
+    Args:
+        data_file (Union[Path, str]): Path to the hdf5 file.
+        dset_path (List[str]): List of path to the data inside the
+            h5 file.
+        phenotype_file (Union[Path, str]): Path to the phenotype file.
+        measure (str, optional): Measure to use for the data. Defaults
+            to "connectome".
+        label (str, optional): Label to use for the data. Defaults to
+            "sex".
+        log (logging): logging object.
+
+    Returns:
+        Dict[str, np.ndarray]: Dictionary with the data and label.
+
+    Raises:
+        NotImplementedError: If the measure is not supported.
+    """
+
+    if measure not in [
+        "connectome",
+        "r2map",
+        "avgr2",
+        "conv_max",
+        "conv_avg",
+        "conv_std",
+    ]:
+        raise NotImplementedError(
+            "measure must be one of 'connectome', 'r2map', 'avgr2'"
+        )
+    if measure == "connectome":
+        cm = ConnectivityMeasure(kind="correlation", vectorize=True)
+    elif measure == "conv_max":
+        m = nn.AdaptiveMaxPool3d((1, 1, 1))
+    elif measure == "conv_avg":
+        m = nn.AdaptiveAvgPool3d((1, 1, 1))
+    elif measure == "conv_std":
+        m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
+
+    participant_id = [
+        p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
+    ]
+    n_total = len(participant_id)
+    df_phenotype = load_phenotype(phenotype_file)
+    # get the common subject in participant_id and df_phenotype
+    participant_id = list(set(participant_id) & set(df_phenotype.index))
+    # get extra subjects in participant_id
+    # remove extra subjects in dset_path
+    log.info(
+        f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
+    )
+
+    dataset = {}
+    for p in dset_path:
+        subject = p.split("/")[-1].split("sub-")[-1].split("_")[0]
+        if subject in participant_id:
+            df_phenotype.loc[subject, "path"] = p
+    selected_path = df_phenotype.loc[participant_id, "path"].values.tolist()
+    log.info(len(selected_path))
+    data = load_data(data_file, selected_path, dtype="data")
+    if "r2" in measure:
+        data = np.concatenate(data).squeeze()
+        if measure == "avgr2":
+            data = data.mean(axis=1).reshape(-1, 1)
+        data = StandardScaler().fit_transform(data)
+
+    if measure == "connectome":
+        data = cm.fit_transform(data)
+
+    if "conv" in measure:
+        convlayers = []
+        for d in data:
+            d = torch.tensor(d, dtype=torch.float32)
+            d = m(d).flatten().numpy()
+            convlayers.append(d)
+        data = convlayers
+    labels = df_phenotype.loc[participant_id, label].values
+    log.info(f"data shape: {data.shape}")
+    log.info(f"label shape: {labels.shape}")
+    dataset = {"data": data, "label": labels}
+    return dataset
+
+
+def load_phenotype(path: Union[Path, str]) -> pd.DataFrame:
+    """Load the phenotype data from the file.
+
+    Args:
+        path (Union[Path, str]): Path to the phenotype file.
+
+    Returns:
+        pd.DataFrame: Phenotype data.
+    """
+    df = pd.read_csv(
+        path,
+        sep="\t",
+        dtype={"participant_id": str, "age": float, "sex": str, "site": str},
+    )
+    df = df.set_index("participant_id")
+    return df

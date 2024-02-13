@@ -12,17 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import torch
-import torch.nn as nn
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
-from nilearn.connectome import ConnectivityMeasure
 from omegaconf import DictConfig, OmegaConf
-from seaborn import boxplot
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
 baseline_details = {
@@ -63,83 +58,9 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    # from src.data.load_data import load_data, load_h5_data_path
-    from data.load_data import load_data, load_h5_data_path
+    from src.data.load_data import get_model_data, load_data, load_h5_data_path
 
-    # get connectomes
-    def get_model_data(
-        data_file, dset_path, phenotype_file, measure="connectome", label="sex"
-    ):
-        if measure not in [
-            "connectome",
-            "r2map",
-            "avgr2",
-            "conv_max",
-            "conv_avg",
-            "conv_std",
-        ]:
-            raise NotImplementedError(
-                "measure must be one of 'connectome', 'r2map', 'avgr2'"
-            )
-        if measure == "connectome":
-            cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-        elif measure == "conv_max":
-            m = nn.AdaptiveMaxPool3d((1, 1, 1))
-        elif measure == "conv_avg":
-            m = nn.AdaptiveAvgPool3d((1, 1, 1))
-        elif measure == "conv_std":
-            m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
-
-        participant_id = [
-            p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
-        ]
-        n_total = len(participant_id)
-        df_phenotype = pd.read_csv(
-            phenotype_file,
-            sep="\t",
-            dtype={"participant_id": str, "age": float, "sex": int},
-        )
-        df_phenotype = df_phenotype.set_index("participant_id")
-        # get the common subject in participant_id and df_phenotype
-        participant_id = list(set(participant_id) & set(df_phenotype.index))
-        # get extra subjects in participant_id
-        # remove extra subjects in dset_path
-        log.info(
-            f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
-        )
-
-        dataset = {}
-        for p in dset_path:
-            subject = p.split("/")[-1].split("sub-")[-1].split("_")[0]
-            if subject in participant_id:
-                df_phenotype.loc[subject, "path"] = p
-        selected_path = df_phenotype.loc[
-            participant_id, "path"
-        ].values.tolist()
-        log.info(len(selected_path))
-        data = load_data(data_file, selected_path, dtype="data")
-        if "r2" in measure:
-            data = np.concatenate(data).squeeze()
-            if measure == "avgr2":
-                data = data.mean(axis=1).reshape(-1, 1)
-            data = StandardScaler().fit_transform(data)
-
-        if measure == "connectome":
-            data = cm.fit_transform(data)
-
-        if "conv" in measure:
-            convlayers = []
-            for d in data:
-                d = torch.tensor(d, dtype=torch.float32)
-                d = m(d).flatten().numpy()
-                convlayers.append(d)
-            data = convlayers
-        labels = df_phenotype.loc[participant_id, label].values
-        log.info(f"data shape: {data.shape}")
-        log.info(f"label shape: {labels.shape}")
-        dataset = {"data": data, "label": labels}
-        return dataset
-
+    # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     convlayers_path = Path(params["convlayers_path"])
     feature_t1_file = (
@@ -147,9 +68,6 @@ def main(params: DictConfig) -> None:
     )
     model_path = Path(params["model_path"])
     phenotype_file = Path(params["phenotype_file"])
-
-    log.info(feature_t1_file)
-    log.info(convlayers_path)
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
@@ -165,8 +83,8 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file_pattern"] = subj["test"]
         else:
             pass
-    log.info(baseline_details)
-    # four baseline models
+
+    # four baseline models for sex
     svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
     lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
     rr = RidgeClassifier(random_state=42, max_iter=100000)
@@ -177,8 +95,12 @@ def main(params: DictConfig) -> None:
     )
     clf_names = ["SVC", "LR", "Ridge", "MLP (sklearn)"]
 
-    baselines_df = []
-
+    baselines_df = {
+        "feature": [],
+        "accuracy": [],
+        "classifier": [],
+        "fold": [],
+    }
     for measure in baseline_details:
         log.info(f"Start training {measure}")
         log.info(f"Load data {baseline_details[measure]['data_file']}")
@@ -199,13 +121,15 @@ def main(params: DictConfig) -> None:
             phenotype_file=phenotype_file,
             measure=measure,
             label="sex",
+            log=log,
         )
 
         sfk = StratifiedKFold(n_splits=5, shuffle=True)
         folds = sfk.split(dataset["data"], dataset["label"])
+
         for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
             clf_acc = []
-            for i, (tng, tst) in enumerate(folds):
+            for i, (tng, tst) in enumerate(folds, start=1):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
                 acc_score = accuracy_score(dataset["label"][tst], test_pred)
@@ -213,44 +137,17 @@ def main(params: DictConfig) -> None:
                 log.info(
                     f"{measure} - {clf_name} fold {i} accuracy: {acc_score:.3f}"
                 )
+                baselines_df["feature"].append(measure)
+                baselines_df["accuracy"].append(acc_score)
+                baselines_df["classifier"].append(clf_name)
+                baselines_df["fold"].append(i)
             acc = np.mean(clf_acc)
             log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
 
-        baseline = pd.DataFrame(
-            {
-                "Accuracy": acc,
-                "Classifier": clf_names,
-                "Feature": [baseline_details[measure]["plot_label"]] * 4,
-            }
-        )
-        baselines_df.append(baseline)
-
-    # stats_path = (
-    #     params["feature_path"] /
-    #      f"feature_horizon-{params['horizon']}.tsv"
-    # )
-    # print("Plot r2 mean results quickly.")
-    # # quick plotting
-    # df_for_stats = pd.read_csv(stats_path, sep="\t")
-    # df_for_stats = df_for_stats[
-    #     (df_for_stats.r2mean > -1e16)
-    # ]  # remove outliers
-    # plt.figure()
-    # g = boxplot(x="site", y="r2mean",
-    #             hue="diagnosis", data=df_for_stats)
-    # g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    # plt.savefig(output_dir / "diagnosis_by_sites.png")
-
-    # plt.figure()
-    # g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
-    # g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    # plt.savefig(output_dir / "sex_by_sites.png")
+    plt.figure()
 
     # plotting
-    baselines_df = pd.concat(
-        baselines_df,
-        axis=0,
-    )
+    baselines_df = pd.DataFrame(baselines_df)
     baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
 
     sns.set_theme(style="whitegrid")
@@ -275,7 +172,7 @@ def main(params: DictConfig) -> None:
         columnspacing=1,
         handletextpad=0,
     )
-    plt.ylim(0.4, 0.7)
+    plt.ylim(0.4, 1.0)
     plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
     plt.title("Baseline test accuracy")
     plt.tight_layout()
