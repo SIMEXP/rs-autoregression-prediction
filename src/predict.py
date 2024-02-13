@@ -26,11 +26,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
 baseline_details = {
-    "connectome": {
-        "data_file": None,
-        "data_file_pattern": None,
-        "plot_label": "Connectome",
-    },
     "avgr2": {
         "data_file": None,
         "data_file_pattern": "r2map",
@@ -55,6 +50,11 @@ baseline_details = {
         "data_file": None,
         "data_file_pattern": "convlayers",
         "plot_label": "Conv layers \n max pooling",
+    },
+    "connectome": {
+        "data_file": None,
+        "data_file_pattern": None,
+        "plot_label": "Connectome",
     },
 }
 
@@ -180,7 +180,7 @@ def main(params: DictConfig) -> None:
     baselines_df = []
 
     for measure in baseline_details:
-        print(measure)
+        log.info(f"Start training {measure}")
         if measure == "connectome":
             dset_path = baseline_details[measure]["data_file_pattern"]
         else:
@@ -189,6 +189,8 @@ def main(params: DictConfig) -> None:
                 baseline_details[measure]["data_file_pattern"],
                 shuffle=True,
             )
+        log.info(f"found {len(dset_path)} subjects with {measure} data.")
+
         dataset = get_model_data(
             baseline_details[measure]["data_file"],
             dset_path=dset_path,
@@ -201,13 +203,16 @@ def main(params: DictConfig) -> None:
         folds = sfk.split(dataset["data"], dataset["label"])
         for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
             clf_acc = []
-            for tng, tst in folds:
+            for i, (tng, tst) in enumerate(folds):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
                 acc_score = accuracy_score(dataset["label"][tst], test_pred)
                 clf_acc.append(acc_score)
-                print(f"{clf_name} accuracy: {acc_score:.3f}")
+                log.info(
+                    f"{measure} - {clf_name} fold {i} accuracy: {acc_score:.3f}"
+                )
             acc = np.mean(clf_acc)
+            log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
 
         baseline = pd.DataFrame(
             {
