@@ -3,7 +3,7 @@ defaults:
   - _self_
   - model: chebnet
   - experiment: experiment
-  - data: abide
+  - data: ukbb
   - hydra: default
 
 verbose: 2
