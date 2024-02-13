@@ -144,39 +144,37 @@ def main(params: DictConfig) -> None:
             acc = np.mean(average_performance[clf_name])
             log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
 
-    plt.figure()
-
-    # plotting
     baselines_df = pd.DataFrame(baselines_df)
     baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
 
-    sns.set_theme(style="whitegrid")
-    f, ax = plt.subplots(figsize=(9, 5))
-    sns.despine(bottom=True, left=True)
-    sns.pointplot(
-        data=baselines_df,
-        x="Feature",
-        y="Accuracy",
-        hue="Classifier",
-        join=False,
-        dodge=0.4 - 0.4 / 3,
-        markers="d",
-        scale=0.75,
-        errorbar=None,
-    )
-    sns.move_legend(
-        ax,
-        loc="upper right",
-        ncol=1,
-        frameon=True,
-        columnspacing=1,
-        handletextpad=0,
-    )
-    plt.ylim(0.4, 1.0)
-    plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
-    plt.title("Baseline test accuracy")
-    plt.tight_layout()
-    plt.savefig(output_dir / "simple_classifiers_sex.png")
+    # plt.figure()
+    # sns.set_theme(style="whitegrid")
+    # f, ax = plt.subplots(figsize=(9, 5))
+    # sns.despine(bottom=True, left=True)
+    # sns.pointplot(
+    #     data=baselines_df,
+    #     x="Feature",
+    #     y="Accuracy",
+    #     hue="Classifier",
+    #     join=False,
+    #     dodge=0.4 - 0.4 / 3,
+    #     markers="d",
+    #     scale=0.75,
+    #     errorbar=None,
+    # )
+    # sns.move_legend(
+    #     ax,
+    #     loc="upper right",
+    #     ncol=1,
+    #     frameon=True,
+    #     columnspacing=1,
+    #     handletextpad=0,
+    # )
+    # plt.ylim(0.4, 1.0)
+    # plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
+    # plt.title("Baseline test accuracy")
+    # plt.tight_layout()
+    # plt.savefig(output_dir / "simple_classifiers_sex.png")
 
 
 if __name__ == "__main__":
