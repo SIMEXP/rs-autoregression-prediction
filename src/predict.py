@@ -21,11 +21,11 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.svm import LinearSVC
 
 baseline_details = {
-    "avgr2": {
-        "data_file": None,
-        "data_file_pattern": "r2map",
-        "plot_label": "t+1\n average R2",
-    },
+    # "avgr2": {
+    #     "data_file": None,
+    #     "data_file_pattern": "r2map",
+    #     "plot_label": "t+1\n average R2",
+    # },
     "r2map": {
         "data_file": None,
         "data_file_pattern": "r2map",
@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    from src.data.load_data import get_model_data, load_data, load_h5_data_path
+    from data.load_data import get_model_data, load_data, load_h5_data_path
 
     # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -126,14 +126,12 @@ def main(params: DictConfig) -> None:
 
         sfk = StratifiedKFold(n_splits=5, shuffle=True)
         folds = sfk.split(dataset["data"], dataset["label"])
-
-        for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
-            clf_acc = []
-            for i, (tng, tst) in enumerate(folds, start=1):
+        average_performance = {clf_name: [] for clf_name in clf_names}
+        for i, (tng, tst) in enumerate(folds, start=1):
+            for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
                 acc_score = accuracy_score(dataset["label"][tst], test_pred)
-                clf_acc.append(acc_score)
                 log.info(
                     f"{measure} - {clf_name} fold {i} accuracy: {acc_score:.3f}"
                 )
@@ -141,7 +139,9 @@ def main(params: DictConfig) -> None:
                 baselines_df["accuracy"].append(acc_score)
                 baselines_df["classifier"].append(clf_name)
                 baselines_df["fold"].append(i)
-            acc = np.mean(clf_acc)
+                average_performance[clf_name].append(acc_score)
+        for clf_name in clf_names:
+            acc = np.mean(average_performance[clf_name])
             log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
 
     plt.figure()
@@ -176,7 +176,7 @@ def main(params: DictConfig) -> None:
     plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
     plt.title("Baseline test accuracy")
     plt.tight_layout()
-    plt.savefig(output_dir / "simple_classifiers.png")
+    plt.savefig(output_dir / "simple_classifiers_sex.png")
 
 
 if __name__ == "__main__":
