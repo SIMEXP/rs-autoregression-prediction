@@ -21,11 +21,11 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.svm import LinearSVC
 
 baseline_details = {
-    # "avgr2": {
-    #     "data_file": None,
-    #     "data_file_pattern": "r2map",
-    #     "plot_label": "t+1\n average R2",
-    # },
+    "avgr2": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\n average R2",
+    },
     "r2map": {
         "data_file": None,
         "data_file_pattern": "r2map",
@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    from data.load_data import get_model_data, load_data, load_h5_data_path
+    from src.data.load_data import get_model_data, load_data, load_h5_data_path
 
     # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -144,6 +144,10 @@ def main(params: DictConfig) -> None:
         for clf_name in clf_names:
             acc = np.mean(average_performance[clf_name])
             log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
+    # save the results
+    # json for safe keeping
+    with open(output_dir / "simple_classifiers.json", "w") as f:
+        json.dump(baselines_df, f, indent=4)
 
     baselines_df = pd.DataFrame(baselines_df)
     baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
