@@ -128,6 +128,7 @@ def main(params: DictConfig) -> None:
         folds = sfk.split(dataset["data"], dataset["label"])
         average_performance = {clf_name: [] for clf_name in clf_names}
         for i, (tng, tst) in enumerate(folds, start=1):
+            log.info(f"Fold {i}")
             for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
