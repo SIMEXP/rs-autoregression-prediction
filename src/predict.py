@@ -150,8 +150,7 @@ def main(params: DictConfig) -> None:
             log.info(f"Fold {i}")
             for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
-                test_pred = clf.predict(dataset["data"][tst])
-                score = clf.score(dataset["label"][tst], test_pred)
+                score = clf.score(dataset["data"][tst], dataset["label"][tst])
                 log.info(f"{measure} - {clf_name} fold {i} score: {score:.3f}")
                 baselines_df["feature"].append(measure)
                 baselines_df["score"].append(score)
