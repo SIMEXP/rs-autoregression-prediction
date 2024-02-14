@@ -91,7 +91,7 @@ def main(params: DictConfig) -> None:
 
     if params["predict_variable"] == "sex":
         # four baseline models for sex
-        svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
+        svm = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
         lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
         rr = RidgeClassifier(random_state=42, max_iter=100000)
         mlp = MLPClassifier(
@@ -99,11 +99,11 @@ def main(params: DictConfig) -> None:
             max_iter=100000,
             random_state=42,
         )
-        clf_names = ["SVC", "LogisticR", "Ridge", "MLP (sklearn)"]
+        clf_names = ["SVC", "LogisticR", "Ridge", "MLP"]
 
     elif params["predict_variable"] == "age":
         # four baseline models for age
-        svc = LinearSVR(C=100, penalty="l2", max_iter=1000000, random_state=42)
+        svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
         lr = LinearRegression()
         rr = Ridge(random_state=42, max_iter=100000)
         mlp = MLPRegressor(
@@ -111,7 +111,7 @@ def main(params: DictConfig) -> None:
             max_iter=100000,
             random_state=42,
         )
-        clf_names = ["SVC", "LinearR", "Ridge", "MLP (sklearn)"]
+        clf_names = ["SVC", "LinearR", "Ridge", "MLP"]
     else:
         raise ValueError("predict_variable must be either sex or age")
 
@@ -150,7 +150,7 @@ def main(params: DictConfig) -> None:
         average_performance = {clf_name: [] for clf_name in clf_names}
         for i, (tng, tst) in enumerate(folds, start=1):
             log.info(f"Fold {i}")
-            for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
+            for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
                 score = clf.score(dataset["label"][tst], test_pred)

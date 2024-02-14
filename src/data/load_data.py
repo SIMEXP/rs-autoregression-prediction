@@ -353,7 +353,7 @@ def get_model_data(
             d = torch.tensor(d, dtype=torch.float32)
             d = m(d).flatten().numpy()
             convlayers.append(d)
-        data = convlayers
+        data = np.array(convlayers)
     labels = df_phenotype.loc[participant_id, label].values
     log.info(f"data shape: {data.shape}")
     log.info(f"label shape: {labels.shape}")
