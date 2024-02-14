@@ -145,27 +145,42 @@ def main(params: DictConfig) -> None:
             log=log,
         )
         log.info("Start training...")
-        sfk = StratifiedKFold(n_splits=5, shuffle=True)
-        folds = sfk.split(dataset["data"], dataset["label"])
-        average_performance = {clf_name: [] for clf_name in clf_names}
-        for i, (tng, tst) in enumerate(folds, start=1):
-            log.info(f"Fold {i}")
-            for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
-                clf.fit(dataset["data"][tng], dataset["label"][tng])
-                score = clf.score(dataset["data"][tst], dataset["label"][tst])
-                log.info(f"{measure} - {clf_name} fold {i} score: {score:.3f}")
-                baselines_df["feature"].append(measure)
-                baselines_df["score"].append(score)
-                baselines_df["classifier"].append(clf_name)
-                baselines_df["fold"].append(i)
-                average_performance[clf_name].append(score)
-            if i == 1:
-                break
+        # sfk = StratifiedKFold(n_splits=5, shuffle=True)
+        # folds = sfk.split(dataset["data"], dataset["label"])
+        # average_performance = {clf_name: [] for clf_name in clf_names}
+        # for i, (tng, tst) in enumerate(folds, start=1):
+        #     log.info(f"Fold {i}")
+        #     for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
+        #         clf.fit(dataset["data"][tng], dataset["label"][tng])
+        #         score = clf.score(
+        #             dataset["data"][tst], dataset["label"][tst]
+        #         )
+        #         log.info(
+        #             f"{measure} - {clf_name} fold {i}: {score:.3f}"
+        #         )
+        #         baselines_df["feature"].append(measure)
+        #         baselines_df["score"].append(score)
+        #         baselines_df["classifier"].append(clf_name)
+        #         baselines_df["fold"].append(i)
+        #         average_performance[clf_name].append(score)
         # for clf_name in clf_names:
         #     acc = np.mean(average_performance[clf_name])
         #     log.info(
         #         f"{measure} - {clf_name} average score: {acc:.3f}"
         #     )
+
+        tng, tst = next(
+            StratifiedKFold(n_splits=5, shuffle=True).split(
+                dataset["data"], dataset["label"]
+            )
+        )  # only one fold
+        for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
+            clf.fit(dataset["data"][tng], dataset["label"][tng])
+            score = clf.score(dataset["data"][tst], dataset["label"][tst])
+            log.info(f"{measure} - {clf_name} score: {score:.3f}")
+            baselines_df["feature"].append(measure)
+            baselines_df["score"].append(score)
+            baselines_df["classifier"].append(clf_name)
 
     # save the results
     # json for safe keeping
