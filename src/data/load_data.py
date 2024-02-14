@@ -310,12 +310,12 @@ def get_model_data(
         )
     if measure == "connectome":
         cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-    elif measure == "conv_max":
-        m = nn.AdaptiveMaxPool3d((1, 1, 1))
+    elif measure == "conv_max":  # pull to size of 1 X 1 per ROI
+        m = nn.AdaptiveMaxPool2d((1, 1))
     elif measure == "conv_avg":
-        m = nn.AdaptiveAvgPool3d((1, 1, 1))
+        m = nn.AdaptiveAvgPool2d((1, 1))
     elif measure == "conv_std":
-        m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
+        m = lambda x: torch.std_mean(x, (1, 2))[0]  # (std, mean)
 
     participant_id = [
         p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
