@@ -14,23 +14,17 @@ import pandas as pd
 import seaborn as sns
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
-from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.linear_model import (
+    LinearRegression,
+    LogisticRegression,
+    Ridge,
+    RidgeClassifier,
+)
 from sklearn.model_selection import StratifiedKFold
-from sklearn.neural_network import MLPClassifier
-from sklearn.svm import LinearSVC
+from sklearn.neural_network import MLPClassifier, MLPRegressor
+from sklearn.svm import LinearSVC, LinearSVR
 
 baseline_details = {
-    "avgr2": {
-        "data_file": None,
-        "data_file_pattern": "r2map",
-        "plot_label": "t+1\n average R2",
-    },
-    "r2map": {
-        "data_file": None,
-        "data_file_pattern": "r2map",
-        "plot_label": "t+1\nR2 map",
-    },
     "conv_avg": {
         "data_file": None,
         "data_file_pattern": "convlayers",
@@ -50,6 +44,16 @@ baseline_details = {
         "data_file": None,
         "data_file_pattern": None,
         "plot_label": "Connectome",
+    },
+    "avgr2": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\n average R2",
+    },
+    "r2map": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\nR2 map",
     },
 }
 
@@ -83,24 +87,41 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file_pattern"] = subj["test"]
         else:
             pass
+    log.info(f"Predicting {params['predict_variable']}.")
 
-    # four baseline models for sex
-    svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
-    lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
-    rr = RidgeClassifier(random_state=42, max_iter=100000)
-    mlp = MLPClassifier(
-        hidden_layer_sizes=(64, 64),
-        max_iter=100000,
-        random_state=42,
-    )
-    clf_names = ["SVC", "LR", "Ridge", "MLP (sklearn)"]
+    if params["predict_variable"] == "sex":
+        # four baseline models for sex
+        svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
+        lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
+        rr = RidgeClassifier(random_state=42, max_iter=100000)
+        mlp = MLPClassifier(
+            hidden_layer_sizes=(64, 64),
+            max_iter=100000,
+            random_state=42,
+        )
+        clf_names = ["SVC", "LogisticR", "Ridge", "MLP (sklearn)"]
+
+    elif params["predict_variable"] == "age":
+        # four baseline models for age
+        svc = LinearSVR(C=100, penalty="l2", max_iter=1000000, random_state=42)
+        lr = LinearRegression()
+        rr = Ridge(random_state=42, max_iter=100000)
+        mlp = MLPRegressor(
+            hidden_layer_sizes=(64, 64),
+            max_iter=100000,
+            random_state=42,
+        )
+        clf_names = ["SVC", "LinearR", "Ridge", "MLP (sklearn)"]
+    else:
+        raise ValueError("predict_variable must be either sex or age")
 
     baselines_df = {
         "feature": [],
-        "accuracy": [],
+        "score": [],
         "classifier": [],
         "fold": [],
     }
+
     for measure in baseline_details:
         log.info(f"Start training {measure}")
         log.info(f"Load data {baseline_details[measure]['data_file']}")
@@ -120,7 +141,7 @@ def main(params: DictConfig) -> None:
             dset_path=dset_path,
             phenotype_file=phenotype_file,
             measure=measure,
-            label="sex",
+            label=params["predict_variable"],
             log=log,
         )
         log.info("Start training...")
@@ -132,25 +153,31 @@ def main(params: DictConfig) -> None:
             for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
                 clf.fit(dataset["data"][tng], dataset["label"][tng])
                 test_pred = clf.predict(dataset["data"][tst])
-                acc_score = accuracy_score(dataset["label"][tst], test_pred)
-                log.info(
-                    f"{measure} - {clf_name} fold {i} accuracy: {acc_score:.3f}"
-                )
+                score = clf.score(dataset["label"][tst], test_pred)
+                log.info(f"{measure} - {clf_name} fold {i} score: {score:.3f}")
                 baselines_df["feature"].append(measure)
-                baselines_df["accuracy"].append(acc_score)
+                baselines_df["score"].append(score)
                 baselines_df["classifier"].append(clf_name)
                 baselines_df["fold"].append(i)
-                average_performance[clf_name].append(acc_score)
+                average_performance[clf_name].append(score)
         for clf_name in clf_names:
             acc = np.mean(average_performance[clf_name])
-            log.info(f"{measure} - {clf_name} average accuracy: {acc:.3f}")
+            log.info(f"{measure} - {clf_name} average score: {acc:.3f}")
+
     # save the results
     # json for safe keeping
-    with open(output_dir / "simple_classifiers.json", "w") as f:
+    with open(
+        output_dir / f"simple_classifiers_{params['predict_variable']}.json",
+        "w",
+    ) as f:
         json.dump(baselines_df, f, indent=4)
 
     baselines_df = pd.DataFrame(baselines_df)
-    baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
+    baselines_df.to_csv(
+        output_dir,
+        f"simple_classifiers_{params['predict_variable']}.tsv",
+        sep="\t",
+    )
 
     # plt.figure()
     # sns.set_theme(style="whitegrid")
