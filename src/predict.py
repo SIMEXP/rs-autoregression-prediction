@@ -8,10 +8,8 @@ from pathlib import Path
 
 import h5py
 import hydra
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from sklearn.linear_model import (
@@ -99,7 +97,7 @@ def main(params: DictConfig) -> None:
             max_iter=100000,
             random_state=42,
         )
-        clf_names = ["SVC", "LogisticR", "Ridge", "MLP"]
+        clf_names = ["SVM", "LogisticR", "Ridge", "MLP"]
 
     elif params["predict_variable"] == "age":
         # four baseline models for age
@@ -111,7 +109,7 @@ def main(params: DictConfig) -> None:
             max_iter=100000,
             random_state=42,
         )
-        clf_names = ["SVC", "LinearR", "Ridge", "MLP"]
+        clf_names = ["SVM", "LinearR", "Ridge", "MLP"]
     else:
         raise ValueError("predict_variable must be either sex or age")
 
