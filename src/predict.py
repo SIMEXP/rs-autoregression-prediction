@@ -90,7 +90,9 @@ def main(params: DictConfig) -> None:
     if params["predict_variable"] == "sex":
         # four baseline models for sex
         svm = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
-        lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
+        lr = LogisticRegression(
+            penalty="l2", max_iter=100000, random_state=42, n_jobs=-1
+        )
         rr = RidgeClassifier(random_state=42, max_iter=100000)
         mlp = MLPClassifier(
             hidden_layer_sizes=(64, 64),
@@ -102,7 +104,7 @@ def main(params: DictConfig) -> None:
     elif params["predict_variable"] == "age":
         # four baseline models for age
         svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
-        lr = LinearRegression()
+        lr = LinearRegression(n_jobs=-1)
         rr = Ridge(random_state=42, max_iter=100000)
         mlp = MLPRegressor(
             hidden_layer_sizes=(64, 64),
@@ -157,9 +159,13 @@ def main(params: DictConfig) -> None:
                 baselines_df["classifier"].append(clf_name)
                 baselines_df["fold"].append(i)
                 average_performance[clf_name].append(score)
-        for clf_name in clf_names:
-            acc = np.mean(average_performance[clf_name])
-            log.info(f"{measure} - {clf_name} average score: {acc:.3f}")
+            if i == 1:
+                break
+        # for clf_name in clf_names:
+        #     acc = np.mean(average_performance[clf_name])
+        #     log.info(
+        #         f"{measure} - {clf_name} average score: {acc:.3f}"
+        #     )
 
     # save the results
     # json for safe keeping
