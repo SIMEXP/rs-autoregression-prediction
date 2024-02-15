@@ -193,8 +193,7 @@ def main(params: DictConfig) -> None:
 
     baselines_df = pd.DataFrame(baselines_df)
     baselines_df.to_csv(
-        output_dir,
-        f"simple_classifiers_{params['predict_variable']}.tsv",
+        output_dir / f"simple_classifiers_{params['predict_variable']}.tsv",
         sep="\t",
     )
 
