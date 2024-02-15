@@ -73,7 +73,7 @@ def main(params: DictConfig) -> None:
             dset_path=h5_dset_path,
             batch_size=params["data"]["batch_size"],
             stride=params["data"]["time_stride"],
-            standardize=False,
+            standardize=False,  # the ts is already standardized
         )
         # save the original output to a h5 file
         with h5py.File(output_horizon_path, "a") as f:

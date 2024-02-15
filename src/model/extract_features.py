@@ -32,7 +32,7 @@ def extract_convlayers(
     thres,
 ):
     """Extract the last conv layer from the pretrained model."""
-    # load data
+    # load data. No standardisation as it's already done.
     ts = load_data(data_file, h5_dset_path, dtype="data")
     X_ts = make_input_labels(
         ts,
