@@ -65,6 +65,7 @@ def main(params: DictConfig) -> None:
     # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
+    log.info(f"Output data {output_dir}")
     convlayers_path = Path(params["convlayers_path"])
     feature_t1_file = (
         convlayers_path.parent / f"feature_horizon-{params['horizon']}.h5"
@@ -120,7 +121,7 @@ def main(params: DictConfig) -> None:
         "feature": [],
         "score": [],
         "classifier": [],
-        "fold": [],
+        # "fold": [],
     }
 
     for measure in baseline_details:
