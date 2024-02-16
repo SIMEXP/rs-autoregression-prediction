@@ -4,4 +4,4 @@ defaults:
   - extract
 
 # passing model path is necessary for evaluation
-convlayers_path: ???
+phenotype_file: ???

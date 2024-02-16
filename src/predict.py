@@ -66,12 +66,12 @@ def main(params: DictConfig) -> None:
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
     log.info(f"Output data {output_dir}")
-    convlayers_path = Path(params["convlayers_path"])
-    feature_t1_file = (
-        convlayers_path.parent / f"feature_horizon-{params['horizon']}.h5"
-    )
     model_path = Path(params["model_path"])
     phenotype_file = Path(params["phenotype_file"])
+    convlayers_path = model_path.parent / "extract/feature_convlayers.h5"
+    feature_t1_file = (
+        model_path.parent / f"extract/feature_horizon-{params['horizon']}.h5"
+    )
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
