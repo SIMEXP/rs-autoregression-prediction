@@ -8,8 +8,6 @@ from typing import Dict, List, Tuple, Union
 import h5py
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
 from nilearn.connectome import ConnectivityMeasure
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -310,12 +308,6 @@ def get_model_data(
         )
     if measure == "connectome":
         cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-    elif measure == "conv_max":  # pull to size of 1 X 1 per ROI
-        m = nn.AdaptiveMaxPool2d((1, 1))
-    elif measure == "conv_avg":
-        m = nn.AdaptiveAvgPool2d((1, 1))
-    elif measure == "conv_std":
-        m = lambda x: torch.std_mean(x, (1, 2))[0]  # (std, mean)
 
     participant_id = [
         p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
@@ -348,12 +340,10 @@ def get_model_data(
         data = cm.fit_transform(data)
 
     if "conv" in measure:
-        convlayers = []
-        for d in data:
-            d = torch.tensor(d, dtype=torch.float32)
-            d = m(d).flatten().numpy()
-            convlayers.append(d)
-        data = np.array(convlayers)
+        pass
+        # load directly from file
+        data = load_data(data_file, selected_path, dtype=measure)
+
     labels = df_phenotype.loc[participant_id, label].values
     log.info(f"data shape: {data.shape}")
     log.info(f"label shape: {labels.shape}")
