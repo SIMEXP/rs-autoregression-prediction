@@ -47,7 +47,13 @@ def main(params: DictConfig) -> None:
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
         subj = json.load(f)
+
     data = subj["test"]
+
+    # save test data path to a text file for easy future reference
+    with open(output_dir / "test_set_connectome.txt", "w") as f:
+        for item in data:
+            f.write("%s\n" % item)
 
     # save the model parameters in the h5 files
     for path in [output_conv_path, output_horizon_path]:
@@ -62,7 +68,7 @@ def main(params: DictConfig) -> None:
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
-    log.info("Predicting t+1 of each subject")
+    log.info(f"Predicting t+{params['horizon']} of each subject")
     for h5_dset_path in tqdm(data):
         # get the prediction of t+1
         r2, Z, Y = predict_horizon(

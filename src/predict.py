@@ -66,16 +66,15 @@ def main(params: DictConfig) -> None:
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
     log.info(f"Output data {output_dir}")
-    model_path = Path(params["model_path"])
+    feature_path = Path(params["feature_path"])
     phenotype_file = Path(params["phenotype_file"])
-    convlayers_path = model_path.parent / "extract/feature_convlayers.h5"
-    feature_t1_file = (
-        model_path.parent / f"extract/feature_horizon-{params['horizon']}.h5"
-    )
+    convlayers_path = feature_path / "feature_convlayers.h5"
+    feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
+    test_subjects = output_dir / "test_set_connectome.txt"
 
     # load test set subject path from the training
-    with open(model_path.parent / "train_test_split.json", "r") as f:
-        subj = json.load(f)
+    with open(test_subjects, "r") as f:
+        subj = f.read().splitlines()
 
     for key in baseline_details:
         if "r2" in key:
@@ -103,7 +102,7 @@ def main(params: DictConfig) -> None:
         )
         clf_names = ["SVM", "LogisticR", "Ridge", "MLP"]
 
-    elif params["predict_variable"] == "age":
+    elif params["predict_variable"] == "age":  # need to fix this
         # four baseline models for age
         svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
         lr = LinearRegression(n_jobs=-1)

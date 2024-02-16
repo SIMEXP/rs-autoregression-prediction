@@ -3,5 +3,7 @@ defaults:
   - _self_
   - extract
 
-# passing model path is necessary for evaluation
-phenotype_file: ???
+predict_variable: sex
+phenotype_file: inputs/connectomes/sourcedata/ukbb/ukbb_pheno.tsv
+# passing extracted feature path is necessary for evaluation
+feature_path: ???
