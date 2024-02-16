@@ -92,7 +92,7 @@ def main(params: DictConfig) -> None:
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
     for h5_dset_path in tqdm(data):
-        convlayers = extract_convlayers(
+        convlayers, convlayers_F = extract_convlayers(
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
             model=model,
@@ -107,6 +107,9 @@ def main(params: DictConfig) -> None:
         with h5py.File(output_conv_path, "a") as f:
             new_ds_path = h5_dset_path.replace("timeseries", "convlayers")
             f[new_ds_path] = convlayers
+    # save the original output to a h5 file
+    with h5py.File(output_conv_path, "a") as f:
+        f.attrs["convolution_layers_F"] = convlayers_F
 
 
 if __name__ == "__main__":

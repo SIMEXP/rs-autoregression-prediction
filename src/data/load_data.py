@@ -11,6 +11,7 @@ import pandas as pd
 from nilearn.connectome import ConnectivityMeasure
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from src.model.extract_features import pooling_convlayers
 
 
 def split_data_by_site(
@@ -273,6 +274,8 @@ def get_model_data(
     phenotype_file: Union[Path, str],
     measure: str = "connectome",
     label: str = "sex",
+    pooling_target: str = "max",
+    layer_index: int = -1,
     log: logging = logging,
 ) -> Dict[str, np.ndarray]:
     """Get the data from pretrained model for the downstrean task.
@@ -330,6 +333,7 @@ def get_model_data(
     selected_path = df_phenotype.loc[participant_id, "path"].values.tolist()
     log.info(len(selected_path))
     data = load_data(data_file, selected_path, dtype="data")
+
     if "r2" in measure:
         data = np.concatenate(data).squeeze()
         if measure == "avgr2":
@@ -340,9 +344,26 @@ def get_model_data(
         data = cm.fit_transform(data)
 
     if "conv" in measure:
-        pass
-        # load directly from file
-        data = load_data(data_file, selected_path, dtype=measure)
+        measure = measure.split("_")[1]
+
+        if layer_index == -1:
+            layer_structure = None
+        else:
+            with h5py.File(data_file, "r") as h5file:
+                layer_structure = h5file.attrs["convolution_layers_F"]
+
+        data = []
+        for p in selected_path:
+            d = load_data(data_file, p, dtype="data")
+            convlayer = pooling_convlayers(
+                convlayers=d,
+                pooling_methods=measure,
+                pooling_target=pooling_target,
+                layer_index=layer_index,
+                layer_structure=layer_structure,
+            )
+            data.append(convlayer)
+        data = np.array(data)
 
     labels = df_phenotype.loc[participant_id, label].values
     log.info(f"data shape: {data.shape}")

@@ -23,7 +23,7 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import LinearSVC, LinearSVR
 
 baseline_details = {
-    "conv_avg": {
+    "conv_average": {
         "data_file": None,
         "data_file_pattern": "convlayers",
         "plot_label": "Conv layers \n avg pooling",
