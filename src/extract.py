@@ -40,6 +40,13 @@ def main(params: DictConfig) -> None:
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
 
+    if isinstance(params["horizon"], int):
+        horizons = [params["horizon"]]
+    elif isinstance(params["horizon"], list):
+        horizons = params["horizon"]
+    else:
+        raise ValueError("horizon should be an integer or a list of integers")
+    log.info("predicting horizon: ", horizons)
     model_path = Path(params["model_path"])
 
     # load test set subject path from the training
@@ -52,9 +59,6 @@ def main(params: DictConfig) -> None:
     with open(output_dir / "test_set_connectome.txt", "w") as f:
         for item in data:
             f.write("%s\n" % item)
-
-    if isinstance(params["horizon"], int):
-        horizons = [params["horizon"]]
 
     log.info("Load model")
     model = load_model(model_path)
@@ -121,10 +125,9 @@ def main(params: DictConfig) -> None:
                 convlayers=convlayers,
                 pooling_methods=method,
                 pooling_target="parcel",
-                layer_index=-1,
+                layer_index=params["convlayer_index"],
                 layer_structure=convlayers_F,
             )
-
             # save the original output to a h5 file
             with h5py.File(output_conv_path, "a") as f:
                 new_ds_path = h5_dset_path.replace("timeseries", method)
