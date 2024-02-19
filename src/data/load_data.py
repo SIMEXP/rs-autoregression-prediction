@@ -11,7 +11,6 @@ import pandas as pd
 from nilearn.connectome import ConnectivityMeasure
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from src.model.extract_features import pooling_convlayers
 
 
 def split_data_by_site(
@@ -344,26 +343,21 @@ def get_model_data(
         data = cm.fit_transform(data)
 
     if "conv" in measure:
-        measure = measure.split("_")[1]
+        # measure = measure.split("_")[1]
 
-        if layer_index == -1:
-            layer_structure = None
-        else:
-            with h5py.File(data_file, "r") as h5file:
-                layer_structure = h5file.attrs["convolution_layers_F"]
+        # if layer_index == -1:
+        #     layer_structure = None
+        # else:
+        #     with h5py.File(data_file, "r") as h5file:
+        #         layer_structure = h5file.attrs["convolution_layers_F"]
 
-        data = []
-        for p in selected_path:
-            d = load_data(data_file, p, dtype="data")
-            convlayer = pooling_convlayers(
-                convlayers=d,
-                pooling_methods=measure,
-                pooling_target=pooling_target,
-                layer_index=layer_index,
-                layer_structure=layer_structure,
-            )
-            data.append(convlayer)
-        data = np.array(data)
+        # data = []
+        # for p in selected_path:
+        #     d = load_data(data_file, p, dtype="data")
+
+        #     data.append(convlayer)
+        # data = np.array(data)
+        pass
 
     labels = df_phenotype.loc[participant_id, label].values
     log.info(f"data shape: {data.shape}")
