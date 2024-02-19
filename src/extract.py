@@ -25,7 +25,6 @@ log = logging.getLogger(__name__)
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
 
-    from src.data.load_data import load_data
     from src.model.extract_features import (
         extract_convlayers,
         pooling_convlayers,
