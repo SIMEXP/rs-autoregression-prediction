@@ -21,7 +21,7 @@ from tqdm import tqdm
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base="1.3")
+@hydra.main(version_base="1.3", config_path="../config", config_name="extract")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
 
@@ -30,8 +30,12 @@ def main(params: DictConfig) -> None:
         pooling_convlayers,
     )
 
+    model_path = Path(params["model_path"])
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     log.info(f"Working on {device}.")
+
+    model_config = OmegaConf.load(model_path.parent / ".hydra/config.yaml")
+    params = OmegaConf.merge(model_config, params)
 
     compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
@@ -44,7 +48,6 @@ def main(params: DictConfig) -> None:
     else:
         horizons = OmegaConf.to_object(params["horizon"])
     log.info(f"predicting horizon: {horizons}")
-    model_path = Path(params["model_path"])
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
