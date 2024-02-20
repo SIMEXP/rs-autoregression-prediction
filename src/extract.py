@@ -21,7 +21,7 @@ from tqdm import tqdm
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="extract")
+@hydra.main(version_base="1.3")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
 
@@ -101,7 +101,7 @@ def main(params: DictConfig) -> None:
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
     for h5_dset_path in tqdm(subj_list):
-        convlayers, convlayers_F = extract_convlayers(
+        convlayers = extract_convlayers(
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
             model=model,
@@ -110,12 +110,16 @@ def main(params: DictConfig) -> None:
             lag=params["data"]["lag"],
             compute_edge_index=compute_edge_index,
             thres=thres,
-            device=torch.device(device),
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:
             new_ds_path = h5_dset_path.replace("timeseries", "convlayers")
             f[new_ds_path] = convlayers.numpy()
+        convlayers_F = [
+            int(k)
+            for i, k in enumerate(params["model"]["FK"].split(","))
+            if i % 2 == 1
+        ]
 
         for method in ["average", "max", "std"]:
             features = pooling_convlayers(

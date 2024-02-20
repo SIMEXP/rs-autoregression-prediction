@@ -34,7 +34,7 @@ def extract_convlayers(
     lag: int,
     compute_edge_index: bool,
     thres: float = 0.9,
-) -> Tuple[List[torch.tensor], Tuple[int]]:
+) -> List[torch.tensor]:
     """Extract conv layers from the pretrained model for one subject."""
     # load data. No standardisation as it's already done.
     ts = load_data(data_file, h5_dset_path, dtype="data")
@@ -65,13 +65,12 @@ def extract_convlayers(
     for layer in save_output.outputs:
         layer = _module_output_to_cpu(layer)
         convlayers.append(layer)
-    convlayers_F = (layer.shape[-1] for layer in convlayers)
     # stack along the feature dimension
     convlayers = torch.cat(convlayers, dim=-1)
     # remove the hooks
     for handle in hook_handles:
         handle.remove()
-    return convlayers, convlayers_F
+    return convlayers
 
 
 def pooling_convlayers(
