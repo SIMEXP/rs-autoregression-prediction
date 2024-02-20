@@ -34,7 +34,7 @@ def extract_convlayers(
     lag: int,
     compute_edge_index: bool,
     thres: float = 0.9,
-) -> List[torch.tensor]:
+) -> torch.tensor:
     """Extract conv layers from the pretrained model for one subject."""
     # load data. No standardisation as it's already done.
     ts = load_data(data_file, h5_dset_path, dtype="data")
@@ -99,13 +99,14 @@ def pooling_convlayers(
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
     if pooling_target not in ["parcel", "timeseries"]:
         raise ValueError(f"Pooling target {pooling_target} is not supported.")
-    if layer_index > len(layer_structure):
-        raise ValueError(
-            "The layer index should be smaller than the length of the "
-            f"layer structure. layer index is {layer_index} but there "
-            f"are {len(layer_structure)} layers."
-        )
-    if layer_structure is None and layer_index != -1:
+    if layer_structure:
+        if layer_index > len(layer_structure):
+            raise ValueError(
+                "The layer index should be smaller than the length of the "
+                f"layer structure. layer index is {layer_index} but there "
+                f"are {len(layer_structure)} layers."
+            )
+    elif layer_index != -1:
         raise ValueError(
             "The layer structure should be provided if layer index is "
             "not -1."
