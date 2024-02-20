@@ -34,7 +34,7 @@ def extract_convlayers(
     lag: int,
     compute_edge_index: bool,
     thres: float = 0.9,
-) -> tuple(List[torch.tensor], Tuple[int]):
+) -> Tuple[List[torch.tensor], Tuple[int]]:
     """Extract conv layers from the pretrained model for one subject."""
     # load data. No standardisation as it's already done.
     ts = load_data(data_file, h5_dset_path, dtype="data")

@@ -36,27 +36,24 @@ def main(params: DictConfig) -> None:
     compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    output_dir = Path(output_dir)
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
-
+    horizons = OmegaConf.to_object(params["horizon"])
     if isinstance(params["horizon"], int):
         horizons = [params["horizon"]]
-    elif isinstance(params["horizon"], list):
-        horizons = params["horizon"]
-    else:
-        raise ValueError("horizon should be an integer or a list of integers")
-    log.info("predicting horizon: ", horizons)
+    log.info(f"predicting horizon: {horizons}")
     model_path = Path(params["model_path"])
 
     # load test set subject path from the training
     with open(model_path.parent / "train_test_split.json", "r") as f:
         subj = json.load(f)
 
-    data = subj["test"]
+    subj_list = subj["test"]
 
     # save test data path to a text file for easy future reference
     with open(output_dir / "test_set_connectome.txt", "w") as f:
-        for item in data:
+        for item in subj_list:
             f.write("%s\n" % item)
 
     log.info("Load model")
@@ -71,10 +68,10 @@ def main(params: DictConfig) -> None:
         with h5py.File(output_horizon_path, "a") as f:
             f.attrs["complied_date"] = str(datetime.today())
             f.attrs["based_on_model"] = str(model_path)
-            f.attrs["horizon"] = params["horizon"]
+            f.attrs["horizon"] = horizon
 
         log.info(f"Predicting t+{horizon} of each subject")
-        for h5_dset_path in tqdm(data):
+        for h5_dset_path in tqdm(subj_list):
             # get the prediction of t+1
             r2, Z, Y = predict_horizon(
                 model=model,
@@ -102,7 +99,7 @@ def main(params: DictConfig) -> None:
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
-    for h5_dset_path in tqdm(data):
+    for h5_dset_path in tqdm(subj_list):
         convlayers, convlayers_F = extract_convlayers(
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
