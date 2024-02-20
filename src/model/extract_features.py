@@ -150,5 +150,5 @@ def pooling_convlayers(
     else:
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
 
-    d = m(convlayers[0]).numpy().squeeze()
+    d = m(convlayers).numpy().squeeze()
     return d
