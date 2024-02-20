@@ -31,12 +31,11 @@ def main(params: DictConfig) -> None:
     )
 
     model_path = Path(params["model_path"])
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    log.info(f"Working on {device}.")
-
     model_config = OmegaConf.load(model_path.parent / ".hydra/config.yaml")
     params = OmegaConf.merge(model_config, params)
 
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    log.info(f"Working on {device}.")
     compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir

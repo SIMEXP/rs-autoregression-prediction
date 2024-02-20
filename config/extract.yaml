@@ -1,7 +1,7 @@
 ---
 defaults:
   - _self_
-  - override hydra: extract
+  - hydra: extract
 
 horizon: 1
 convlayer_index: -1
