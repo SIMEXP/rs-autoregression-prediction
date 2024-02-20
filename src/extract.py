@@ -39,9 +39,10 @@ def main(params: DictConfig) -> None:
     output_dir = Path(output_dir)
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
-    horizons = OmegaConf.to_object(params["horizon"])
     if isinstance(params["horizon"], int):
         horizons = [params["horizon"]]
+    else:
+        horizons = OmegaConf.to_object(params["horizon"])
     log.info(f"predicting horizon: {horizons}")
     model_path = Path(params["model_path"])
 
