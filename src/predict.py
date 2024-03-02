@@ -23,25 +23,25 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import LinearSVC, LinearSVR
 
 baseline_details = {
-    "conv_average": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n avg pooling",
-    },
-    "conv_std": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n std pooling",
-    },
-    "conv_max": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n max pooling",
-    },
     "connectome": {
         "data_file": None,
         "data_file_pattern": None,
         "plot_label": "Connectome",
+    },
+    "conv_average": {
+        "data_file": None,
+        "data_file_pattern": "average",
+        "plot_label": "Conv layers \n avg pooling",
+    },
+    "conv_std": {
+        "data_file": None,
+        "data_file_pattern": "std",
+        "plot_label": "Conv layers \n std pooling",
+    },
+    "conv_max": {
+        "data_file": None,
+        "data_file_pattern": "max",
+        "plot_label": "Conv layers \n max pooling",
     },
     "avgr2": {
         "data_file": None,
