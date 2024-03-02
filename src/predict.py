@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    from src.data.load_data import get_model_data, load_data, load_h5_data_path
+    from src.data.load_data import get_model_data, load_h5_data_path
 
     # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -71,6 +71,8 @@ def main(params: DictConfig) -> None:
     convlayers_path = feature_path / "feature_convlayers.h5"
     feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
     test_subjects = feature_path / "test_set_connectome.txt"
+    model_config = OmegaConf.load(feature_path.parent / ".hydra/config.yaml")
+    params = OmegaConf.merge(model_config, params)
 
     # load test set subject path from the training
     with open(test_subjects, "r") as f:
