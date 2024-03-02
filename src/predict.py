@@ -70,7 +70,7 @@ def main(params: DictConfig) -> None:
     phenotype_file = Path(params["phenotype_file"])
     convlayers_path = feature_path / "feature_convlayers.h5"
     feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
-    test_subjects = output_dir / "test_set_connectome.txt"
+    test_subjects = feature_path / "test_set_connectome.txt"
 
     # load test set subject path from the training
     with open(test_subjects, "r") as f:
