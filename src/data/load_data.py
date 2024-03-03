@@ -356,8 +356,8 @@ def get_model_data(
         #     d = load_data(data_file, p, dtype="data")
 
         #     data.append(convlayer)
-        # data = np.array(data)
-        pass
+        data = np.array(data)
+        data = StandardScaler().fit_transform(data)
 
     labels = df_phenotype.loc[participant_id, label].values
     log.info(f"data shape: {data.shape}")

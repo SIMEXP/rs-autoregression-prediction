@@ -28,7 +28,7 @@ baseline_details = {
         "data_file_pattern": None,
         "plot_label": "Connectome",
     },
-    "conv_average": {
+    "conv_avg": {
         "data_file": None,
         "data_file_pattern": "average",
         "plot_label": "Conv layers \n avg pooling",
@@ -73,6 +73,7 @@ def main(params: DictConfig) -> None:
     test_subjects = feature_path / "test_set_connectome.txt"
     model_config = OmegaConf.load(feature_path.parent / ".hydra/config.yaml")
     params = OmegaConf.merge(model_config, params)
+    log.info(params)
 
     # load test set subject path from the training
     with open(test_subjects, "r") as f:
@@ -85,7 +86,7 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file"] = convlayers_path
         elif "connectome" in key:
             baseline_details[key]["data_file"] = params["data"]["data_file"]
-            baseline_details[key]["data_file_pattern"] = subj["test"]
+            baseline_details[key]["data_file_pattern"] = subj
         else:
             pass
     log.info(f"Predicting {params['predict_variable']}.")
