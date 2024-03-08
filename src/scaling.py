@@ -143,6 +143,15 @@ def main(params: DictConfig) -> None:
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 
+    # visualise training loss
+    training_losses = pd.DataFrame(losses)
+    plt.figure()
+    g = lineplot(data=training_losses)
+    g.set_title(f"Training Losses (N={n_sample})")
+    g.set_xlabel("Epoc")
+    g.set_ylabel("Loss (MSE)")
+    plt.savefig(Path(output_dir) / "training_losses.png")
+
     # make test labels
     X_test, Y_test = make_seq(
         test_data,
@@ -173,15 +182,6 @@ def main(params: DictConfig) -> None:
     del Z_test
     del Y_test
     del r2_test
-
-    # visualise training loss
-    training_losses = pd.DataFrame(losses)
-    plt.figure()
-    g = lineplot(data=training_losses)
-    g.set_title(f"Training Losses (N={n_sample})")
-    g.set_xlabel("Epoc")
-    g.set_ylabel("Loss (MSE)")
-    plt.savefig(Path(output_dir) / "training_losses.png")
 
 
 if __name__ == "__main__":

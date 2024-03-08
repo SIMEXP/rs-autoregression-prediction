@@ -1,9 +1,9 @@
 ---
 defaults:
   - _self_
-  - train
-  - override hydra: extract
+  - hydra: extract
 
 horizon: 1
+convlayer_index: -1
 # passing model path is necessary for evaluation
 model_path: ???

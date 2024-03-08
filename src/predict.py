@@ -2,86 +2,46 @@
 Execute at the root of the repo, not in the code directory.
 """
 import argparse
+import json
+import logging
 from pathlib import Path
 
 import h5py
 import hydra
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import torch
-import torch.nn as nn
-from data.load_data import load_data, load_h5_data_path
 from hydra.utils import get_original_cwd, instantiate, to_absolute_path
-from nilearn.connectome import ConnectivityMeasure
 from omegaconf import DictConfig, OmegaConf
-from seaborn import boxplot
-from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.linear_model import (
+    LinearRegression,
+    LogisticRegression,
+    Ridge,
+    RidgeClassifier,
+)
 from sklearn.model_selection import StratifiedKFold
-from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import LinearSVC
-
-
-# get connectomes
-def get_model_data(
-    data_file, tng_dset_path, test_dset_path, measure="connectome"
-):
-    if measure not in [
-        "connectome",
-        "r2map",
-        "avgr2",
-        "conv_max",
-        "conv_avg",
-        "conv_std",
-    ]:
-        raise NotImplementedError(
-            "measure must be one of 'connectome', 'r2map', 'avgr2'"
-        )
-    if measure == "connectome":
-        cm = ConnectivityMeasure(kind="correlation", vectorize=True)
-    elif measure == "conv_max":
-        m = nn.AdaptiveMaxPool3d((1, 1, 1))
-    elif measure == "conv_avg":
-        m = nn.AdaptiveAvgPool3d((1, 1, 1))
-    elif measure == "conv_std":
-        m = lambda x: torch.std_mean(x, (1, 2, 3))[0]
-
-    dataset = {}
-    for set_name, dset_path in zip(
-        ["tng", "test"], [tng_dset_path, test_dset_path]
-    ):
-        data = load_data(data_file, dset_path, dtype="data")
-        if "r2" in measure:
-            data = np.concatenate(data).squeeze()
-            if measure == "avgr2":
-                data = data.mean(axis=1).reshape(-1, 1)
-            data = StandardScaler().fit_transform(data)
-
-        if measure == "connectome":
-            data = cm.fit_transform(data)
-
-        if "conv" in measure:
-            convlayers = []
-            for d in data:
-                d = torch.tensor(d, dtype=torch.float32)
-                d = m(d).flatten().numpy()
-                convlayers.append(d)
-            data = convlayers
-
-        label = load_data(data_file, dset_path, dtype="diagnosis")
-
-        dataset[set_name] = {"data": data, "label": label}
-    return dataset
-
+from sklearn.neural_network import MLPClassifier, MLPRegressor
+from sklearn.svm import LinearSVC, LinearSVR
 
 baseline_details = {
     "connectome": {
         "data_file": None,
         "data_file_pattern": None,
         "plot_label": "Connectome",
+    },
+    "conv_avg": {
+        "data_file": None,
+        "data_file_pattern": "average",
+        "plot_label": "Conv layers \n avg pooling",
+    },
+    "conv_std": {
+        "data_file": None,
+        "data_file_pattern": "std",
+        "plot_label": "Conv layers \n std pooling",
+    },
+    "conv_max": {
+        "data_file": None,
+        "data_file_pattern": "max",
+        "plot_label": "Conv layers \n max pooling",
     },
     "avgr2": {
         "data_file": None,
@@ -93,149 +53,152 @@ baseline_details = {
         "data_file_pattern": "r2map",
         "plot_label": "t+1\nR2 map",
     },
-    "conv_avg": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n avg pooling",
-    },
-    "conv_std": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n std pooling",
-    },
-    "conv_max": {
-        "data_file": None,
-        "data_file_pattern": "convlayers",
-        "plot_label": "Conv layers \n max pooling",
-    },
 }
+
+log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    convlayer_file = params["convlayers_path"]
-    feature_t1_file = (
-        convlayer_file.parent / f"feature_horizon-{params['horizon']}.h5"
-    )
+    from src.data.load_data import get_model_data, load_h5_data_path
 
-    print(feature_t1_file)
-    print(convlayer_file)
+    # parse parameters
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    output_dir = Path(output_dir)
+    log.info(f"Output data {output_dir}")
+    feature_path = Path(params["feature_path"])
+    phenotype_file = Path(params["phenotype_file"])
+    convlayers_path = feature_path / "feature_convlayers.h5"
+    feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
+    test_subjects = feature_path / "test_set_connectome.txt"
+    model_config = OmegaConf.load(feature_path.parent / ".hydra/config.yaml")
+    params = OmegaConf.merge(model_config, params)
+    log.info(params)
+
+    # load test set subject path from the training
+    with open(test_subjects, "r") as f:
+        subj = f.read().splitlines()
 
     for key in baseline_details:
         if "r2" in key:
             baseline_details[key]["data_file"] = feature_t1_file
         elif "conv" in key:
-            baseline_details[key]["data_file"] = convlayer_file
+            baseline_details[key]["data_file"] = convlayers_path
         elif "connectome" in key:
             baseline_details[key]["data_file"] = params["data"]["data_file"]
-            baseline_details[key]["data_file_pattern"] = params["data"][
-                "predicition"
-            ]["data_filter"]
+            baseline_details[key]["data_file_pattern"] = subj
         else:
             pass
+    log.info(f"Predicting {params['predict_variable']}.")
 
-    # four baseline models
-    svc = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
-    lr = LogisticRegression(penalty="l2", max_iter=100000, random_state=42)
-    rr = RidgeClassifier(random_state=42, max_iter=100000)
-    mlp = MLPClassifier(
-        hidden_layer_sizes=(64, 64),
-        max_iter=100000,
-        random_state=42,
-    )
-    clf_names = ["SVC", "LR", "Ridge", "MLP (sklearn)"]
-
-    baselines_df = []
-
-    print("Train on ABIDE 1, Test on ABIDE 2")
-    for measure in baseline_details:
-        print(measure)
-        dset_path = load_h5_data_path(
-            baseline_details[measure]["data_file"],
-            baseline_details[measure]["data_file_pattern"],
-            shuffle=True,
+    if params["predict_variable"] == "sex":
+        # four baseline models for sex
+        svm = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
+        lr = LogisticRegression(
+            penalty="l2", max_iter=100000, random_state=42, n_jobs=-1
         )
-        tng_path = [p for p in dset_path if "abide1" in p]
-        test_path = [p for p in dset_path if "abide2" in p]
+        rr = RidgeClassifier(random_state=42, max_iter=100000)
+        mlp = MLPClassifier(
+            hidden_layer_sizes=(64, 64),
+            max_iter=100000,
+            random_state=42,
+        )
+        clf_names = ["SVM", "LogisticR", "Ridge", "MLP"]
+
+    elif params["predict_variable"] == "age":  # need to fix this
+        # four baseline models for age
+        svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
+        lr = LinearRegression(n_jobs=-1)
+        rr = Ridge(random_state=42, max_iter=100000)
+        mlp = MLPRegressor(
+            hidden_layer_sizes=(64, 64),
+            max_iter=100000,
+            random_state=42,
+        )
+        clf_names = ["SVM", "LinearR", "Ridge", "MLP"]
+    else:
+        raise ValueError("predict_variable must be either sex or age")
+
+    baselines_df = {
+        "feature": [],
+        "score": [],
+        "classifier": [],
+        # "fold": [],
+    }
+
+    for measure in baseline_details:
+        log.info(f"Start training {measure}")
+        log.info(f"Load data {baseline_details[measure]['data_file']}")
+        if measure == "connectome":
+            dset_path = baseline_details[measure]["data_file_pattern"]
+        else:
+            dset_path = load_h5_data_path(
+                baseline_details[measure]["data_file"],
+                baseline_details[measure]["data_file_pattern"],
+                shuffle=True,
+                random_state=params["random_state"],
+            )
+        log.info(f"found {len(dset_path)} subjects with {measure} data.")
+
         dataset = get_model_data(
             baseline_details[measure]["data_file"],
-            tng_dset_path=tng_path,
-            test_dset_path=test_path,
+            dset_path=dset_path,
+            phenotype_file=phenotype_file,
             measure=measure,
+            label=params["predict_variable"],
+            log=log,
         )
-        acc = []
-        for clf_name, clf in zip(clf_names, [svc, lr, rr, mlp]):
-            clf.fit(dataset["tng"]["data"], dataset["tng"]["label"])
-            test_pred = clf.predict(dataset["test"]["data"])
-            acc_score = accuracy_score(dataset["test"]["label"], test_pred)
-            acc.append(acc_score)
-            print(f"{clf_name} accuracy: {acc_score:.3f}")
+        log.info("Start training...")
+        # sfk = StratifiedKFold(n_splits=5, shuffle=True)
+        # folds = sfk.split(dataset["data"], dataset["label"])
+        # average_performance = {clf_name: [] for clf_name in clf_names}
+        # for i, (tng, tst) in enumerate(folds, start=1):
+        #     log.info(f"Fold {i}")
+        #     for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
+        #         clf.fit(dataset["data"][tng], dataset["label"][tng])
+        #         score = clf.score(
+        #             dataset["data"][tst], dataset["label"][tst]
+        #         )
+        #         log.info(
+        #             f"{measure} - {clf_name} fold {i}: {score:.3f}"
+        #         )
+        #         baselines_df["feature"].append(measure)
+        #         baselines_df["score"].append(score)
+        #         baselines_df["classifier"].append(clf_name)
+        #         baselines_df["fold"].append(i)
+        #         average_performance[clf_name].append(score)
+        # for clf_name in clf_names:
+        #     acc = np.mean(average_performance[clf_name])
+        #     log.info(
+        #         f"{measure} - {clf_name} average score: {acc:.3f}"
+        #     )
 
-        baseline = pd.DataFrame(
-            {
-                "Accuracy": acc,
-                "Classifier": clf_names,
-                "Feature": [baseline_details[measure]["plot_label"]] * 4,
-            }
-        )
-        baselines_df.append(baseline)
+        tng, tst = next(
+            StratifiedKFold(n_splits=5, shuffle=True).split(
+                dataset["data"], dataset["label"]
+            )
+        )  # only one fold
+        for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
+            clf.fit(dataset["data"][tng], dataset["label"][tng])
+            score = clf.score(dataset["data"][tst], dataset["label"][tst])
+            log.info(f"{measure} - {clf_name} score: {score:.3f}")
+            baselines_df["feature"].append(measure)
+            baselines_df["score"].append(score)
+            baselines_df["classifier"].append(clf_name)
 
-    stats_path = (
-        params["feature_path"] / f"feature_horizon-{params['horizon']}.tsv"
-    )
-    print("Plot r2 mean results quickly.")
-    # quick plotting
-    df_for_stats = pd.read_csv(stats_path, sep="\t")
-    df_for_stats = df_for_stats[
-        (df_for_stats.r2mean > -1e16)
-    ]  # remove outliers
-    plt.figure()
-    g = boxplot(x="site", y="r2mean", hue="diagnosis", data=df_for_stats)
-    g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "diagnosis_by_sites.png")
+    # save the results
+    # json for safe keeping
+    with open(
+        output_dir / f"simple_classifiers_{params['predict_variable']}.json",
+        "w",
+    ) as f:
+        json.dump(baselines_df, f, indent=4)
 
-    plt.figure()
-    g = boxplot(x="site", y="r2mean", hue="sex", data=df_for_stats)
-    g.set_xticklabels(g.get_xticklabels(), rotation=90)
-    plt.savefig(output_dir / "sex_by_sites.png")
-
-    # plotting
-    baselines_df = pd.concat(
-        baselines_df,
-        axis=0,
+    baselines_df = pd.DataFrame(baselines_df)
+    baselines_df.to_csv(
+        output_dir / f"simple_classifiers_{params['predict_variable']}.tsv",
+        sep="\t",
     )
-    baselines_df.to_csv(output_dir, "simple_classifiers.tsv", sep="\t")
-
-    sns.set_theme(style="whitegrid")
-    f, ax = plt.subplots(figsize=(9, 5))
-    sns.despine(bottom=True, left=True)
-    sns.pointplot(
-        data=baselines_df,
-        x="Feature",
-        y="Accuracy",
-        hue="Classifier",
-        join=False,
-        dodge=0.4 - 0.4 / 3,
-        markers="d",
-        scale=0.75,
-        errorbar=None,
-    )
-    sns.move_legend(
-        ax,
-        loc="upper right",
-        ncol=1,
-        frameon=True,
-        columnspacing=1,
-        handletextpad=0,
-    )
-    plt.ylim(0.4, 0.7)
-    plt.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black")
-    plt.title(
-        "Baseline test accuracy\ntraining set: ABIDE 1, test set: ABIDE 2"
-    )
-    plt.tight_layout()
-    plt.savefig(output_dir / "simple_classifiers.png")
 
 
 if __name__ == "__main__":
