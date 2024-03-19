@@ -140,9 +140,9 @@ def pooling_convlayers(
 
     if pooling_methods == "1dconv":
         m = nn.Conv1d(
-            in_channels=convlayers.shape[-1],
+            in_channels=convlayers.size(1),
             out_channels=1,
-            kernel_size=convlayers.shape[0],
+            kernel_size=convlayers.size(2),
         )
     elif pooling_methods == "average":
         m = nn.AdaptiveAvgPool2d(output_size)
