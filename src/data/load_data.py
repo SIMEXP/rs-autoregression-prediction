@@ -274,7 +274,6 @@ def get_model_data(
     measure: str = "connectome",
     label: str = "sex",
     pooling_target: str = "max",
-    layer_index: int = -1,
     log: logging = logging,
 ) -> Dict[str, np.ndarray]:
     """Get the data from pretrained model for the downstrean task.
@@ -343,19 +342,6 @@ def get_model_data(
         data = cm.fit_transform(data)
 
     if "conv" in measure:
-        # measure = measure.split("_")[1]
-
-        # if layer_index == -1:
-        #     layer_structure = None
-        # else:
-        #     with h5py.File(data_file, "r") as h5file:
-        #         layer_structure = h5file.attrs["convolution_layers_F"]
-
-        # data = []
-        # for p in selected_path:
-        #     d = load_data(data_file, p, dtype="data")
-
-        #     data.append(convlayer)
         data = np.array(data)
         data = StandardScaler().fit_transform(data)
 

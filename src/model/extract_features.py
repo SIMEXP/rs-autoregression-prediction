@@ -95,7 +95,7 @@ def pooling_convlayers(
             pooling_target is "parcel", or shape (time series, parcel)
             if pooling_target is "timeseries"
     """
-    if pooling_methods not in ["average", "max", "std"]:
+    if pooling_methods not in ["average", "max", "std", "1dconv"]:
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
     if pooling_target not in ["parcel", "timeseries"]:
         raise ValueError(f"Pooling target {pooling_target} is not supported.")
@@ -119,12 +119,9 @@ def pooling_convlayers(
                 "feature dimension of the convlayers."
             )
         # unstack the convlayers by layer structure
-        structure_layers = []
-        for i, f in enumerate(layer_structure):
-            i = sum(layer_structure[0:i])
-            j = i + f
-            structure_layers.append(convlayers[:, :, i:j])
-        convlayers = structure_layers[layer_index]
+        start_index = sum(layer_structure[:layer_index])
+        end_index = start_index + layer_structure[layer_index]
+        convlayers = convlayers[:, :, start_index:end_index]
         return pooling_convlayers(
             convlayers,
             pooling_methods=pooling_methods,
@@ -141,7 +138,13 @@ def pooling_convlayers(
     if pooling_target == "timeseries":
         output_size = (2) if pooling_methods == "std" else (n_parcel, 1)
 
-    if pooling_methods == "average":
+    if pooling_methods == "1dconv":
+        m = nn.Conv1d(
+            in_channels=convlayers.shape[-1],
+            out_channels=1,
+            kernel_size=convlayers.shape[0],
+        )
+    elif pooling_methods == "average":
         m = nn.AdaptiveAvgPool2d(output_size)
     elif pooling_methods == "max":
         m = nn.AdaptiveMaxPool2d(output_size)
