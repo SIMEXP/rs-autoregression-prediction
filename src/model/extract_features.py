@@ -164,5 +164,8 @@ def pooling_convlayers(
         m = lambda x: torch.std_mean(x, dim)[0]
     else:
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
-    d = m(convlayers).numpy().squeeze()
+    if pooling_methods != "1dconv":
+        d = m(convlayers).numpy().squeeze()
+    else:
+        d = m(convlayers).detach().numpy().squeeze()
     return d
