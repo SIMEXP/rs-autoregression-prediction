@@ -303,9 +303,11 @@ def get_model_data(
         "conv_max",
         "conv_avg",
         "conv_std",
+        "conv_conv1d",
     ]:
         raise NotImplementedError(
             "measure must be one of 'connectome', 'r2map', 'avgr2'"
+            " or 'conv_max', 'conv_avg', 'conv_std', 'conv_conv1d'."
         )
     if measure == "connectome":
         cm = ConnectivityMeasure(kind="correlation", vectorize=True)
