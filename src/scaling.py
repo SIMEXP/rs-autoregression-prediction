@@ -49,17 +49,18 @@ def main(params: DictConfig) -> None:
     # organise parameters
     compute_edge_index = "Chebnet" in params["model"]["model"]
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
+    log.info(f"Random seed {params['random_state']}")
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    log.info(params["model"]["model"])
+    log.info(f"Working on {device}.")
+
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
     train_param["data_file"] = params["data"]["data_file"]
     train_param["time_stride"] = params["data"]["time_stride"]
     train_param["lag"] = params["data"]["lag"]
     train_param["num_workers"] = params["data"]["num_workers"]
-    log.info(f"Random seed {params['random_state']}")
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    params["torch_device"] = device
-    log.info(params["model"]["model"])
-    log.info(f"Working on {device}.")
+    train_param["torch_device"] = device
 
     # load data path
     n_sample = params["experiment"]["scaling"]["n_sample"]
@@ -72,7 +73,7 @@ def main(params: DictConfig) -> None:
             + len(data_reference["val"])
             + len(data_reference["test"])
         )
-    log.info(f"Experiment on {n_sample} subjects. Load data.")
+    log.info(f"Experiment on {n_sample} subjects. ")
 
     # create connectome from training set
     if compute_edge_index:
@@ -81,8 +82,11 @@ def main(params: DictConfig) -> None:
             dset_paths=data_reference["train"],
             threshold=thres,
         )
+        log.info("Graph created")
     else:
         edge_index = None
+
+    log.info("start training.")
     train_data = (data_reference["train"], data_reference["val"], edge_index)
     (
         model,
