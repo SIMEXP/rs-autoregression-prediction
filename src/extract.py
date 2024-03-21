@@ -118,12 +118,12 @@ def main(params: DictConfig) -> None:
             new_ds_path = h5_dset_path.replace("timeseries", "convlayers")
             f[new_ds_path] = convlayers.numpy()
         convlayers_F = [
-            int(k)
-            for i, k in enumerate(params["model"]["FK"].split(","))
-            if i % 2 == 1
+            int(F)
+            for i, F in enumerate(params["model"]["FK"].split(","))
+            if i % 2 == 0
         ]
-
-        for method in ["average", "max", "std"]:
+        # get the pooling features of the assigned layer
+        for method in ["average", "max", "std", "1dconv"]:
             features = pooling_convlayers(
                 convlayers=convlayers,
                 pooling_methods=method,

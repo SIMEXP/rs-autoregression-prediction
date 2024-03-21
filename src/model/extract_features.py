@@ -88,14 +88,14 @@ def pooling_convlayers(
         layer_index (int) : the index of the layer to be pooled, -1
             means pooling all layers.
         pooling_methods (str) : "average", "max", "std"
-        pooling_target (str) : "parcel", "timeseries"
+        pooling_target (str) : keep "parcel" or "timeseries" and parcels
 
     Returns:
         np.array: the pooled feature, shape (parcel, ) if
             pooling_target is "parcel", or shape (time series, parcel)
             if pooling_target is "timeseries"
     """
-    if pooling_methods not in ["average", "max", "std"]:
+    if pooling_methods not in ["average", "max", "std", "1dconv"]:
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
     if pooling_target not in ["parcel", "timeseries"]:
         raise ValueError(f"Pooling target {pooling_target} is not supported.")
@@ -119,36 +119,53 @@ def pooling_convlayers(
                 "feature dimension of the convlayers."
             )
         # unstack the convlayers by layer structure
-        structure_layers = []
-        for i, f in enumerate(layer_structure):
-            i = sum(layer_structure[0:i])
-            j = i + f
-            structure_layers.append(convlayers[:, :, i:j])
-        convlayers = structure_layers[layer_index]
+        start_index = sum(layer_structure[:layer_index])
+        end_index = start_index + layer_structure[layer_index]
+        convlayers = convlayers[:, :, start_index:end_index]
         return pooling_convlayers(
             convlayers,
             pooling_methods=pooling_methods,
             pooling_target=pooling_target,
         )
+    # start with (time series, parcel, stack layer feature F)
+    # (parcel, time series, stack layer feature F)
+    convlayers = torch.swapaxes(convlayers, 0, 1)
+    # (parcel, stack layer feature F, time series)
+    convlayers = torch.swapaxes(convlayers, 1, 2)
+    n_parcel, n_feature, n_time = convlayers.size()
 
-    # pooling the convlayers
-    n_parcel = convlayers.shape[1]
-
-    if pooling_target == "parcel":
-        convlayers = torch.swapaxes(convlayers, 0, 1)
-        # (parcel, time series, stack layer feature F)
-        output_size = (1, 2) if pooling_methods == "std" else (1, 1)
-    if pooling_target == "timeseries":
-        output_size = (2) if pooling_methods == "std" else (n_parcel, 1)
-
-    if pooling_methods == "average":
-        m = nn.AdaptiveAvgPool2d(output_size)
-    elif pooling_methods == "max":
-        m = nn.AdaptiveMaxPool2d(output_size)
+    if pooling_methods == "1dconv":
+        in_channels = n_feature
+        out_channels = 1  # convolving over layer features
+        kernel_size = n_time if pooling_target == "parcel" else 1
+        m = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+        )
+    elif pooling_methods in ["average", "max"]:
+        # add channel dimension to convlayers
+        # (parcel, channel, stack layer feature F, time series)
+        # treat each parcel as independent batches
+        # channel is always 1
+        convlayers = convlayers.unsqueeze(1)
+        kernel_size = (
+            (n_feature, n_time)
+            if pooling_target == "parcel"
+            else (n_feature, 1)
+        )
+        if pooling_methods == "average":
+            m = nn.AvgPool2d(kernel_size=kernel_size)
+        elif pooling_methods == "max":
+            m = nn.MaxPool2d(kernel_size=kernel_size)
     elif pooling_methods == "std":
-        m = lambda x: torch.std_mean(x, output_size)[0]  # (std, mean)
+        # calculate along which dimensions
+        dim = (1, 2) if pooling_target == "parcel" else (1)
+        m = lambda x: torch.std_mean(x, dim)[0]
     else:
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
-
-    d = m(convlayers).numpy().squeeze()
+    if pooling_methods != "1dconv":
+        d = m(convlayers).numpy().squeeze()
+    else:
+        d = m(convlayers).detach().numpy().squeeze()
     return d

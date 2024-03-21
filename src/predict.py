@@ -43,6 +43,11 @@ baseline_details = {
         "data_file_pattern": "max",
         "plot_label": "Conv layers \n max pooling",
     },
+    "conv_conv1d": {
+        "data_file": None,
+        "data_file_pattern": "1dconv",
+        "plot_label": "Conv layers \n 1D convolution",
+    },
     "avgr2": {
         "data_file": None,
         "data_file_pattern": "r2map",
