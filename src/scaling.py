@@ -17,10 +17,12 @@ import pandas as pd
 import submitit
 import torch
 from fmri_autoreg.data.load_data import (
+    get_edge_index,
+    load_data,
     load_params,
-    make_input_labels,
     make_seq,
 )
+from fmri_autoreg.models.predict_model import predict_model
 from fmri_autoreg.models.train_model import train
 from hydra.utils import instantiate
 from omegaconf import DictConfig
@@ -37,7 +39,6 @@ log = logging.getLogger(__name__)
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
-    from src.data.load_data import load_data
 
     env = submitit.JobEnvironment()
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -50,15 +51,17 @@ def main(params: DictConfig) -> None:
     thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     train_param = {**params["model"], **params["experiment"]}
     train_param["batch_size"] = params["data"]["batch_size"]
+    train_param["data_file"] = params["data"]["data_file"]
+    train_param["time_stride"] = params["data"]["time_stride"]
+    train_param["lag"] = params["data"]["lag"]
+    train_param["num_workers"] = params["data"]["num_workers"]
     log.info(f"Random seed {params['random_state']}")
-    scaling_param = params["experiment"]["scaling"]
-    scaling_param["random_state"] = params["random_state"]
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    train_param["torch_device"] = device
+    params["torch_device"] = device
     log.info(params["model"]["model"])
     log.info(f"Working on {device}.")
 
-    # load data
+    # load data path
     n_sample = params["experiment"]["scaling"]["n_sample"]
     data_reference = instantiate(params["experiment"]["scaling"])
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
@@ -70,74 +73,30 @@ def main(params: DictConfig) -> None:
             + len(data_reference["test"])
         )
     log.info(f"Experiment on {n_sample} subjects. Load data.")
-    tng_data = load_data(
-        params["data"]["data_file"],
-        data_reference["train"],
-        standardize=params["data"]["standardize"],
-        dtype="data",
-    )
-    val_data = load_data(
-        params["data"]["data_file"],
-        data_reference["val"],
-        standardize=params["data"]["standardize"],
-        dtype="data",
-    )
-    test_data = load_data(
-        params["data"]["data_file"],
-        data_reference["test"],
-        standardize=params["data"]["standardize"],
-        dtype="data",
-    )
 
-    # training data labels
-    log.info("Create training data labels.")
-    X_tng, Y_tng, X_val, Y_val, edge_index = make_input_labels(
-        tng_data,
-        val_data,
-        params["model"]["seq_length"],
-        params["data"]["time_stride"],
-        params["data"]["lag"],
-        compute_edge_index,
-        thres,
-    )
-    train_data = (X_tng, Y_tng, X_val, Y_val, edge_index)
-    del tng_data
-    del val_data
-
-    log.info("Training data labels.")
-    # train model
+    # create connectome from training set
+    if compute_edge_index:
+        edge_index = get_edge_index(
+            data_file=params["data"]["data_file"],
+            dset_paths=data_reference["train"],
+            threshold=thres,
+        )
+    else:
+        edge_index = None
+    train_data = (data_reference["train"], data_reference["val"], edge_index)
     (
         model,
-        r2_tng,
-        r2_val,
-        Z_tng,
-        Y_tng,
-        Z_val,
-        Y_val,
+        mean_r2_tng,
+        mean_r2_val,
         losses,
         _,
     ) = train(train_param, train_data, verbose=params["verbose"])
-
     # save training results
-    np.save(os.path.join(output_dir, "r2_tng.npy"), r2_tng)
-    np.save(os.path.join(output_dir, "r2_val.npy"), r2_val)
-    np.save(os.path.join(output_dir, "pred_tng.npy"), Z_tng)
-    np.save(os.path.join(output_dir, "labels_tng.npy"), Y_tng)
-    np.save(os.path.join(output_dir, "pred_val.npy"), Z_val)
-    np.save(os.path.join(output_dir, "labels_val.npy"), Y_val)
+    np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
+    np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
     np.save(os.path.join(output_dir, "training_losses.npy"), losses)
-
-    mean_r2_val = np.mean(r2_val)
-    mean_r2_tng = np.mean(r2_tng)
     log.info(f"Mean r2 tng: {mean_r2_tng}")
     log.info(f"Mean r2 val: {mean_r2_val}")
-
-    del Z_tng
-    del Y_tng
-    del r2_tng
-    del Z_val
-    del Y_val
-    del r2_val
 
     model = model.to(device)
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
@@ -153,34 +112,17 @@ def main(params: DictConfig) -> None:
     plt.savefig(Path(output_dir) / "training_losses.png")
 
     # make test labels
-    X_test, Y_test = make_seq(
-        test_data,
-        params["model"]["seq_length"],
-        params["data"]["time_stride"],
-        params["data"]["lag"],
+    r2_test = predict_model(
+        model=model,
+        params=train_param,
+        data_file=train_param["data_file"],
+        dset=data_reference["test"],
     )
-    del test_data
-
-    # predict on test data
-    Z_test = np.concatenate(
-        [
-            model.predict(x)
-            for x in np.array_split(
-                X_test, ceil(X_test.shape[0] / params["data"]["batch_size"])
-            )
-        ]
-    )
-    r2_test = r2_score(Y_test, Z_test, multioutput="raw_values")
-
     mean_r2_test = np.mean(r2_test)
     log.info(f"Mean r2 test: {mean_r2_test}")
 
     # save predict results
     np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
-    np.save(os.path.join(output_dir, "pred_test.npy"), Z_test)
-    np.save(os.path.join(output_dir, "labels_test.npy"), Y_test)
-    del Z_test
-    del Y_test
     del r2_test
 
 

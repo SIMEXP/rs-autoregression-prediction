@@ -1,6 +1,7 @@
 ---
-standardize: true
+standardize: false
 time_stride: 1
 lag: 1
 edge_index_thres: 0.9
 batch_size: 100
+num_workers: 4
