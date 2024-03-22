@@ -75,7 +75,7 @@ def main(params: DictConfig) -> None:
     val_data_h5 = os.path.join(output_dir, "data_val.h5")
     tng_data_h5, edge_index = make_input_labels(
         data_file=train_param["data_file"],
-        dset=data_reference["train"],
+        dset_paths=data_reference["train"],
         params=train_param,
         output_file=tng_data_h5,
         compute_edge_index=compute_edge_index,
@@ -83,7 +83,7 @@ def main(params: DictConfig) -> None:
     )
     val_data_h5, edge_index = make_input_labels(
         data_file=train_param["data_file"],
-        dset=data_reference["val"],
+        dset_paths=data_reference["val"],
         params=train_param,
         output_file=val_data_h5,
         compute_edge_index=False,
