@@ -17,10 +17,9 @@ import pandas as pd
 import submitit
 import torch
 from fmri_autoreg.data.load_data import (
-    get_edge_index,
     load_data,
     load_params,
-    make_seq,
+    make_input_labels,
 )
 from fmri_autoreg.models.predict_model import predict_model
 from fmri_autoreg.models.train_model import train
@@ -48,23 +47,20 @@ def main(params: DictConfig) -> None:
 
     # organise parameters
     compute_edge_index = "Chebnet" in params["model"]["model"]
-    thres = params["data"]["edge_index_thres"] if compute_edge_index else None
     log.info(f"Random seed {params['random_state']}")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     log.info(params["model"]["model"])
     log.info(f"Working on {device}.")
 
-    train_param = {**params["model"], **params["experiment"]}
-    train_param["batch_size"] = params["data"]["batch_size"]
-    train_param["data_file"] = params["data"]["data_file"]
-    train_param["time_stride"] = params["data"]["time_stride"]
-    train_param["lag"] = params["data"]["lag"]
-    train_param["num_workers"] = params["data"]["num_workers"]
+    # flatten the parameters
+    train_param = {**params["model"], **params["experiment"], **params["data"]}
+
     train_param["torch_device"] = device
 
     # load data path
     n_sample = params["experiment"]["scaling"]["n_sample"]
     data_reference = instantiate(params["experiment"]["scaling"])
+
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
     if n_sample == -1:
@@ -75,19 +71,27 @@ def main(params: DictConfig) -> None:
         )
     log.info(f"Experiment on {n_sample} subjects. ")
 
-    # create connectome from training set
-    if compute_edge_index:
-        edge_index = get_edge_index(
-            data_file=params["data"]["data_file"],
-            dset_paths=data_reference["train"],
-            threshold=thres,
-        )
-        log.info("Graph created")
-    else:
-        edge_index = None
+    tng_data_h5 = os.path.join(output_dir, "data_train.h5")
+    val_data_h5 = os.path.join(output_dir, "data_val.h5")
+    tng_data_h5, edge_index = make_input_labels(
+        data_file=train_param["data_file"],
+        dset=data_reference["train"],
+        params=train_param,
+        output_file=tng_data_h5,
+        compute_edge_index=compute_edge_index,
+        log=log,
+    )
+    val_data_h5, edge_index = make_input_labels(
+        data_file=train_param["data_file"],
+        dset=data_reference["val"],
+        params=train_param,
+        output_file=val_data_h5,
+        compute_edge_index=False,
+        log=log,
+    )
+    train_data = (tng_data_h5, val_data_h5, edge_index)
 
     log.info("start training.")
-    train_data = (data_reference["train"], data_reference["val"], edge_index)
     (
         model,
         mean_r2_tng,
@@ -115,19 +119,19 @@ def main(params: DictConfig) -> None:
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
 
-    # make test labels
-    r2_test = predict_model(
-        model=model,
-        params=train_param,
-        data_file=train_param["data_file"],
-        dset=data_reference["test"],
-    )
-    mean_r2_test = np.mean(r2_test)
-    log.info(f"Mean r2 test: {mean_r2_test}")
+    # # make test labels
+    # r2_test = predict_model(
+    #     model=model,
+    #     params=train_param,
+    #     data_file=train_param["data_file"],
+    #     dset=data_reference["test"],
+    # )
+    # mean_r2_test = np.mean(r2_test)
+    # log.info(f"Mean r2 test: {mean_r2_test}")
 
-    # save predict results
-    np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
-    del r2_test
+    # # save predict results
+    # np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
+    # del r2_test
 
 
 if __name__ == "__main__":
