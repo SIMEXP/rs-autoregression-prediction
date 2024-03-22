@@ -77,7 +77,7 @@ def main(params: DictConfig) -> None:
         data_file=train_param["data_file"],
         dset_paths=data_reference["train"],
         params=train_param,
-        output_file=tng_data_h5,
+        output_file_path=tng_data_h5,
         compute_edge_index=compute_edge_index,
         log=log,
     )
@@ -85,7 +85,7 @@ def main(params: DictConfig) -> None:
         data_file=train_param["data_file"],
         dset_paths=data_reference["val"],
         params=train_param,
-        output_file=val_data_h5,
+        output_file_path=val_data_h5,
         compute_edge_index=False,
         log=log,
     )
