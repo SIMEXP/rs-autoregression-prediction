@@ -119,19 +119,18 @@ def main(params: DictConfig) -> None:
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
 
-    # # make test labels
-    # r2_test = predict_model(
-    #     model=model,
-    #     params=train_param,
-    #     data_file=train_param["data_file"],
-    #     dset=data_reference["test"],
-    # )
-    # mean_r2_test = np.mean(r2_test)
-    # log.info(f"Mean r2 test: {mean_r2_test}")
+    # make test labels
+    r2_test = predict_model(
+        model=model,
+        params=train_param,
+        dset=data_reference["test"],
+    )
+    mean_r2_test = np.mean(r2_test)
+    log.info(f"Mean r2 test: {mean_r2_test}")
 
-    # # save predict results
-    # np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
-    # del r2_test
+    # save predict results
+    np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
+    del r2_test
 
 
 if __name__ == "__main__":
