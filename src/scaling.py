@@ -81,7 +81,7 @@ def main(params: DictConfig) -> None:
         compute_edge_index=compute_edge_index,
         log=log,
     )
-    val_data_h5, edge_index = make_input_labels(
+    val_data_h5, _ = make_input_labels(
         data_file=train_param["data_file"],
         dset_paths=data_reference["val"],
         params=train_param,
