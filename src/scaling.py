@@ -91,7 +91,7 @@ def main(params: DictConfig) -> None:
     )
     train_data = (tng_data_h5, val_data_h5, edge_index)
 
-    log.info("start training.")
+    log.info("Start training.")
     (
         model,
         mean_r2_tng,
@@ -120,10 +120,19 @@ def main(params: DictConfig) -> None:
     plt.savefig(Path(output_dir) / "training_losses.png")
 
     # make test labels
+    test_data_h5 = os.path.join(output_dir, "data_test.h5")
+    test_data_h5, _ = make_input_labels(
+        data_file=train_param["data_file"],
+        dset_paths=data_reference["test"],
+        params=train_param,
+        output_file_path=test_data_h5,
+        compute_edge_index=False,
+        log=log,
+    )
     r2_test = predict_model(
         model=model,
         params=train_param,
-        dset=data_reference["test"],
+        data_h5=test_data_h5,
     )
     mean_r2_test = np.mean(r2_test)
     log.info(f"Mean r2 test: {mean_r2_test}")
