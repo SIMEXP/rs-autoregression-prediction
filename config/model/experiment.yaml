@@ -1,6 +1,6 @@
-
+---
 nb_epochs: 20
-lr: 0.01
+lr: loguniform(0.001, 1.0)
 lr_patience: 4
 lr_thres: 0.001
 weight_decay: 0
