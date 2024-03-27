@@ -1,4 +1,8 @@
 ---
+defaults:
+  - _self_
+  - experiment
+
 model: Chebnet
 FC_type: nonshared_uni
 FK: 8,3,8,3,8,3
@@ -6,4 +10,3 @@ M: '1'
 use_bn: true
 dropout: 0
 bn_momentum: 0.1
-seq_length: 16
