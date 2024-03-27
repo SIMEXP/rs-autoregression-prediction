@@ -42,11 +42,12 @@ ax.set_xticklabels(
         "Average",
         "Standard\ndeviation",
         "Max",
+        "Conv1d",
         "Average R$^2$",
         "R$^2$ map",
     ],
 )
-ax.hlines(0.5, -0.5, 5.5, linestyles="dashed", colors="black", label="Chance")
+ax.hlines(0.5, -0.5, 6.5, linestyles="dashed", colors="black", label="Chance")
 blue_patch = Patch(color=sns.color_palette()[0], label="Small model")
 orange_patch = Patch(color=sns.color_palette()[1], label="Bigger model")
 D_patch = Line2D(
@@ -102,4 +103,4 @@ plt.legend(
 
 ax.set_title("Down stream sex prediction accuracy")
 plt.tight_layout()
-plt.savefig("simple_classifiers_sex.png")
+plt.savefig("outputs/simple_classifiers_sex.png")
