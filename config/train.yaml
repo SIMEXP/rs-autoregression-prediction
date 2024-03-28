@@ -8,3 +8,4 @@ defaults:
 verbose: 2
 random_state: 42
 torch_device: cuda:0  # or cpu
+return_type: float

@@ -27,9 +27,7 @@ from sklearn.metrics import r2_score
 log = logging.getLogger(__name__)
 
 
-@hydra.main(
-    version_base="1.3", config_path="../config", config_name="train"
-)
+@hydra.main(version_base="1.3", config_path="../config", config_name="train")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
@@ -48,7 +46,7 @@ def main(params: DictConfig) -> None:
 
     # flatten the parameters
     train_param = {**params["model"], **params["data"]}
-    train_param["torch_device"] = params['torch_device']
+    train_param["torch_device"] = params["torch_device"]
     train_param["random_state"] = params["random_state"]
 
     # load data path
@@ -100,7 +98,7 @@ def main(params: DictConfig) -> None:
     log.info(f"Mean r2 tng: {mean_r2_tng}")
     log.info(f"Mean r2 val: {mean_r2_val}")
 
-    model = model.to(params['torch_device'])
+    model = model.to(params["torch_device"])
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 
@@ -113,27 +111,20 @@ def main(params: DictConfig) -> None:
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
 
-    # make test labels
-    test_data_h5 = os.path.join(output_dir, "data_test.h5")
-    test_data_h5, _ = make_input_labels(
-        data_file=params["data"]["data_file"],
-        dset_paths=data_reference["test"],
-        params=train_param,
-        output_file_path=test_data_h5,
-        compute_edge_index=False,
-        log=log,
-    )
-    r2_test = predict_model(
-        model=model,
-        params=train_param,
-        data_h5=test_data_h5,
-    )
-    mean_r2_test = np.mean(r2_test)
-    log.info(f"Mean r2 test: {mean_r2_test}")
+    # use the mean r2 val as the objective for hyperparameter tuning
+    if params.return_type == "float":
+        return mean_r2_val
 
-    # save predict results
-    np.save(os.path.join(output_dir, "r2_test.npy"), r2_test)
-    del r2_test
+    if params.return_type == "dict":
+        return {"name": "objective", "type": "objective", "value": mean_r2_val}
+
+    if params.return_type == "list":
+        return [
+            {"name": "objective", "type": "objective", "value": mean_r2_val}
+        ]
+
+    if params.return_type == "none":
+        return None
 
 
 if __name__ == "__main__":
