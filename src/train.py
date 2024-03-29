@@ -36,7 +36,10 @@ def main(params: DictConfig) -> None:
 
         env = submitit.JobEnvironment()
         log.info(f"Process ID {os.getpid()} in {env}")
-
+        # use SLURM_TMPDIR for data_dir
+        data_dir = os.environ["SLURM_TMPDIR"]
+    else:
+        data_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
@@ -66,8 +69,8 @@ def main(params: DictConfig) -> None:
         )
     log.info(f"Experiment on {n_sample} subjects. ")
 
-    tng_data_h5 = os.path.join(output_dir, "data_train.h5")
-    val_data_h5 = os.path.join(output_dir, "data_val.h5")
+    tng_data_h5 = os.path.join(data_dir, "data_train.h5")
+    val_data_h5 = os.path.join(data_dir, "data_val.h5")
     tng_data_h5, edge_index = make_input_labels(
         data_file=params["data"]["data_file"],
         dset_paths=data_reference["train"],
@@ -85,14 +88,14 @@ def main(params: DictConfig) -> None:
         log=log,
     )
     train_data = (tng_data_h5, val_data_h5, edge_index)
+    del edge_index
 
     with h5py.File(tng_data_h5, "r") as h5file:
         n_seq = h5file["input"].shape[0]
-    logging.info(f"Number of sequence: {n_seq}.")
     if n_seq < train_param["batch_size"]:
         log.info(
-            "Batch size is greater than the number of sequences."
-            "Setting batch size to number of sequences."
+            "Batch size is greater than the number of sequences. "
+            "Setting batch size to number of sequences. "
             f"New batch size: {n_seq}. "
             f"Old batch size: {train_param['batch_size']}."
         )

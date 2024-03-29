@@ -22,10 +22,10 @@ sweeper:
   # default parametrization of the search space
   params:
     model:
-      lr: uniform(1e-6, 1e-2)
-      lr_thres: uniform(1e-6, 1.0)
+      lr: uniform(1e-4, 1e-2)
+      lr_thres: uniform(1e-6, 1e-2)
       batch_size: uniform(32, 128, discrete=True)
-      seq_length: uniform(4, 32, discrete=True)
+      seq_length: uniform(4, 64, discrete=True)
       fidelity: fidelity(1, 100)
 
   experiment:
