@@ -22,9 +22,11 @@ sweeper:
   # default parametrization of the search space
   params:
     model:
-      dropout: uniform(0, 1)
-      lr: uniform(0, 1)
-      batch_size: fidelity(16, 128, base=2)
+      lr: uniform(1e-6, 1e-2)
+      lr_thres: uniform(1e-6, 1.0)
+      batch_size: uniform(32, 128, discrete=True)
+      seq_length: uniform(4, 32, discrete=True)
+      fidelity: fidelity(1, 100)
 
   experiment:
     name: experiment
@@ -48,7 +50,7 @@ sweeper:
   worker:
     n_workers: -1
     max_broken: 3
-    max_trials: 500
+    max_trials: 200
 
   storage:
     type: legacy

@@ -13,7 +13,6 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import submitit
 import torch
 from fmri_autoreg.data.load_data import make_input_labels
 from fmri_autoreg.models.predict_model import predict_model
@@ -32,9 +31,13 @@ def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
 
-    env = submitit.JobEnvironment()
+    if "SLURM_JOB_ID" in os.environ:
+        import submitit
+
+        env = submitit.JobEnvironment()
+        log.info(f"Process ID {os.getpid()} in {env}")
+
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    log.info(f"Process ID {os.getpid()} in {env}")
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
 
@@ -82,6 +85,18 @@ def main(params: DictConfig) -> None:
         log=log,
     )
     train_data = (tng_data_h5, val_data_h5, edge_index)
+
+    with h5py.File(tng_data_h5, "r") as h5file:
+        n_seq = h5file["input"].shape[0]
+    logging.info(f"Number of sequence: {n_seq}.")
+    if n_seq < train_param["batch_size"]:
+        log.info(
+            "Batch size is greater than the number of sequences."
+            "Setting batch size to number of sequences."
+            f"New batch size: {n_seq}. "
+            f"Old batch size: {train_param['batch_size']}."
+        )
+        train_param["batch_size"] = n_seq
 
     log.info("Start training.")
     (
