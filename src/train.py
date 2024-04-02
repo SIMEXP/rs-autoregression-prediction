@@ -22,24 +22,38 @@ from omegaconf import DictConfig
 from seaborn import lineplot
 from sklearn.metrics import r2_score
 
-# A logger for this file
-log = logging.getLogger(__name__)
+
+def convert_bytes(num):
+    for x in ["bytes", "KB", "MB", "GB", "TB"]:
+        if num < 1024.0:
+            return f"{num:.1f} {x}"
+        num /= 1024.0
 
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="train")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
+    # if not interactive session of slurm, import submit it
 
-    if "SLURM_JOB_ID" in os.environ:
-        import submitit
-
-        env = submitit.JobEnvironment()
-        log.info(f"Process ID {os.getpid()} in {env}")
+    if (
+        "SLURM_JOB_ID" in os.environ
+        and os.environ["SLURM_JOB_NAME"] != "interactive"
+    ):
+        # import submitit
+        # env = submitit.JobEnvironment()
+        pid = os.getpid()
+        # A logger for this file
+        log = logging.getLogger(f"Process ID {pid}")
+        log.info(f"Process ID {pid}")
         # use SLURM_TMPDIR for data_dir
-        data_dir = os.environ["SLURM_TMPDIR"]
+        data_dir = Path(os.environ["SLURM_TMPDIR"]) / f"pid_{pid}"
+        data_dir.mkdir()
     else:
-        data_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        log = logging.getLogger(__name__)
+        data_dir = Path(
+            hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        )
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     log.info(f"Current working directory : {os.getcwd()}")
     log.info(f"Output directory  : {output_dir}")
@@ -48,12 +62,13 @@ def main(params: DictConfig) -> None:
     compute_edge_index = "Chebnet" in params["model"]["model"]
     log.info(f"Random seed {params['random_state']}")
     log.info(params["model"]["model"])
-    log.info(f"Working on {params['torch_device']}.")
 
     # flatten the parameters
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     train_param = {**params["model"], **params["data"]}
-    train_param["torch_device"] = params["torch_device"]
+    train_param["torch_device"] = device
     train_param["random_state"] = params["random_state"]
+    log.info(f"Working on {device}.")
 
     # load data path
     n_sample = params["data"]["split"]["n_sample"]
@@ -69,8 +84,8 @@ def main(params: DictConfig) -> None:
         )
     log.info(f"Experiment on {n_sample} subjects. ")
 
-    tng_data_h5 = os.path.join(data_dir, "data_train.h5")
-    val_data_h5 = os.path.join(data_dir, "data_val.h5")
+    tng_data_h5 = data_dir / "data_train.h5"
+    val_data_h5 = data_dir / "data_val.h5"
     tng_data_h5, edge_index = make_input_labels(
         data_file=params["data"]["data_file"],
         dset_paths=data_reference["train"],
@@ -87,6 +102,14 @@ def main(params: DictConfig) -> None:
         compute_edge_index=False,
         log=log,
     )
+    if params["verbose"] > 1:
+        log.info(
+            f"Training data: {convert_bytes(os.path.getsize(tng_data_h5))}"
+        )
+        log.info(
+            f"Validation data: {convert_bytes(os.path.getsize(val_data_h5))}"
+        )
+
     train_data = (tng_data_h5, val_data_h5, edge_index)
     del edge_index
 
@@ -111,12 +134,12 @@ def main(params: DictConfig) -> None:
     ) = train(train_param, train_data, verbose=params["verbose"])
     # save training results
     np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
-    np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
+    np.save(os.path.join(output_dir, "mean_r2_val.npy"), mean_r2_val)
     np.save(os.path.join(output_dir, "training_losses.npy"), losses)
     log.info(f"Mean r2 tng: {mean_r2_tng}")
     log.info(f"Mean r2 val: {mean_r2_val}")
 
-    model = model.to(params["torch_device"])
+    model = model.to(device)
     with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
         pk.dump(model, f)
 
@@ -128,6 +151,10 @@ def main(params: DictConfig) -> None:
     g.set_xlabel("Epoc")
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
+
+    if mean_r2_val > 1:
+        log.warning("R2 score is greater than 1. This is unexpected.")
+        mean_r2_val = np.nan
 
     # use the mean r2 val as the objective for hyperparameter tuning
     if params.return_type == "float":

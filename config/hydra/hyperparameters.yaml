@@ -17,14 +17,17 @@ job_logging:
       # Incorporates fix from https://github.com/facebookresearch/hydra/pull/2242
       filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
 
-
 sweeper:
   # default parametrization of the search space
   params:
     model:
-      lr: uniform(1e-4, 1e-2)
-      lr_thres: uniform(1e-6, 1e-2)
-      batch_size: uniform(32, 128, discrete=True)
+      FK: choices(["\'8,6,8,6,8,6\'", "\'16,3,16,3,8,3,8,3\'", "\'64,3,32,3\'", "\'16,3,8,3\'", "\'32,3\'", "\'8,3,8,3,8,3\'"])
+      M: choices(["\'16,8,1\'", "\'8,1\'"])
+      lr: uniform(1e-4, 1)
+      lr_thres: uniform(1e-6, 1)
+      dropout: uniform(0, 0.5)
+      batch_size: uniform(64, 256, discrete=True)
+      lag: uniform(1, 3, discrete=True)
       seq_length: uniform(4, 64, discrete=True)
       fidelity: fidelity(1, 100)
 
@@ -35,6 +38,7 @@ sweeper:
   algorithm:
     type: bohb
     config:
+      seed: ${random_state}
       min_points_in_model: 20
       top_n_percent: 15
       num_samples: 64
@@ -50,7 +54,7 @@ sweeper:
   worker:
     n_workers: -1
     max_broken: 3
-    max_trials: 200
+    max_trials: 500
 
   storage:
     type: legacy
@@ -61,11 +65,11 @@ sweeper:
 
 launcher:
   submitit_folder: ${hydra.sweep.dir}/.submitit/%j
-  timeout_min: 10
-  cpus_per_task: 1
-  gpus_per_node:
+  timeout_min: 240
+  cpus_per_task: 4
+  gpus_per_node: 1
   tasks_per_node: 1
-  mem_gb: 8
+  mem_gb: 4
   nodes: 1
   name: ${hydra.job.name}
   stderr_to_stdout: false

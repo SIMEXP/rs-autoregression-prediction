@@ -7,5 +7,4 @@ defaults:
 
 verbose: 2
 random_state: 42
-torch_device: cpu  # or cuda:0
 return_type: float

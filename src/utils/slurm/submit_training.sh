@@ -1,17 +1,16 @@
-python src/train.py --multirun hydra=hyperparameters \
-  ++hydra.launcher.timeout_min=60 \
-  ++hydra.launcher.mem_gb=4 \
-  ++data.n_sample=1000 \
-  ++torch_device=cuda:0
+# use a small set to make sure the parameter tuning is doing things
+python src/train.py --multirun hydra=hyperparameters ++hydra.launcher.timeout_min=480 ++data.n_sample=-1
 
+# debug
 python src/train.py \
-  ++data.n_sample=1000 \
-  ++torch_device=cpu \
+  ++data.n_sample=-1 \
+  ++model.FK=\'8,3,8,3,8,3\' \
+  ++model.M=\'8,1\' \
   ++model.batch_size=127 \
-  ++model.lag=1 \
-  ++model.lr=0.002561 \
-  ++model.lr_thres=3.01e-10 \
-  ++model.seq_length=30
+  ++model.lag=3 \
+  ++model.lr=0.65 \
+  ++model.lr_thres=0.702 \
+  ++model.seq_length=52
 
 # train small default model with the full ukbb
 python src/train.py --multirun hydra=hyperparameters \
