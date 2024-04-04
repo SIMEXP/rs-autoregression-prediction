@@ -62,6 +62,7 @@ def main(params: DictConfig) -> None:
     compute_edge_index = "Chebnet" in params["model"]["model"]
     log.info(f"Random seed {params['random_state']}")
     log.info(params["model"]["model"])
+    params["model"]["nb_epochs"] = int(params["model"]["nb_epochs"])
 
     # flatten the parameters
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -154,7 +155,7 @@ def main(params: DictConfig) -> None:
 
     if mean_r2_val > 1:
         log.warning("R2 score is greater than 1. This is unexpected.")
-        mean_r2_val = np.nan
+        mean_r2_val = -1
 
     # use the mean r2 val as the objective for hyperparameter tuning
     if params.return_type == "float":

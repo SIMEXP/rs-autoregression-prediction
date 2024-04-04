@@ -10,4 +10,3 @@ time_stride: 1
 lag: 1
 seq_length: 16
 edge_index_thres: 0.9
-fidelity: 3
