@@ -1,14 +1,13 @@
----
-defaults:
-  - _self_
-  - preprocessing
-
 data_file: inputs/connectomes/ukbb.h5
+standardize: false
+n_embed: 197
+n_sample: -1
+
 split:  # training and evaluation
   _target_: src.data.load_data.load_ukbb_dset_path
-  path: inputs/connectomes/ukbb.h5
-  atlas_desc: atlas-MIST_desc-197
-  n_sample: -1
+  path: ${data.data_file}
+  atlas_desc: atlas-MIST_desc-${data.n_embed}
+  n_sample: ${data.n_sample}
   val_set: 0.20
   test_set: 0.20
   segment: 1

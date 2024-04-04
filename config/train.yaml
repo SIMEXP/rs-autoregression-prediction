@@ -2,9 +2,9 @@
 defaults:
   - _self_
   - model: chebnet
-  - experiment: experiment
   - data: ukbb
   - hydra: default
 
 verbose: 2
 random_state: 42
+return_type: float
