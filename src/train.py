@@ -153,18 +153,11 @@ def main(params: DictConfig) -> None:
     g.set_ylabel("Loss (MSE)")
     plt.savefig(Path(output_dir) / "training_losses.png")
 
-    val_loss = losses["val"][-1]
-
-    # use the final validation loss as the
-    # objective for hyperparameter tuning
-    if params.return_type == "float":
-        return val_loss
-
-    if params.return_type == "dict":
-        return {"name": "loss", "type": "objective", "value": val_loss}
-
-    if params.return_type == "list":
-        return [{"name": "loss", "type": "objective", "value": val_loss}]
+    # minimise objective for hyperparameter tuning
+    if mean_r2_val < 0 or mean_r2_val > 1:
+        return 1  # invalid r2 score means bad fit
+    else:
+        return 1 - mean_r2_val
 
 
 if __name__ == "__main__":

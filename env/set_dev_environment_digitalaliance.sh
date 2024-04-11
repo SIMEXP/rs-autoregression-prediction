@@ -4,6 +4,9 @@
 # virtualenv -p /cvmfs/soft.computecanada.ca/easybuild/software/2020/avx512/Core/python/3.10.2/bin/python -a . env_py310
 #!/bin/bash
 
+# we need a lot of old things....
+module load gentoo/2020
+
 TORCH=1.13.1
 CUDA=cu117  # options: cpu, cu116, cu117
 
@@ -20,3 +23,6 @@ pip install -e .
 module load rust
 pip install -r env/requirements-dev.txt
 pre-commit install
+
+# mount back the new update
+module load gentoo/2023
