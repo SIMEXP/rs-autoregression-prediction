@@ -19,10 +19,12 @@ python src/train.py --multirun hydra=hyperparameters \
   ++torch_device=cpu \
   ++data.n_sample=-1
 
+# scaling
 python src/train.py --multirun  \
-  hydra/launcher=submitit_slurm \
-  ++hydra.launcher.account=rrg-pbellec \
-  ++hydra.launcher.timeout_min=90 \
-  ++hydra.launcher.mem_gb=4 \
-  ++hydra.launcher.gpus_per_node=1 \
-  ++data.n_sample=-1
+  hydra=scaling \
+  model=ccn_abstract \
+  ++data.n_sample=100,250,500,1000,2000,3000,4000,5000,6000,8000,10000,16000,20000,-1 \
+  ++random_state=0,1,2,4,8,42
+
+# extraction - create symlink to model
+python src/extract.py --multirun model_path=outputs/ccn2024/best_model/model.pkl

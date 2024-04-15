@@ -37,7 +37,7 @@ def main(params: DictConfig) -> None:
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     log.info(f"Working on {device}.")
     compute_edge_index = "Chebnet" in params["model"]["model"]
-    thres = params["data"]["edge_index_thres"] if compute_edge_index else None
+    thres = params["model"]["edge_index_thres"] if compute_edge_index else None
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
     log.info(f"Current working directory : {os.getcwd()}")
@@ -82,8 +82,8 @@ def main(params: DictConfig) -> None:
                 horizon=horizon,
                 data_file=params["data"]["data_file"],
                 dset_path=h5_dset_path,
-                batch_size=params["data"]["batch_size"],
-                stride=params["data"]["time_stride"],
+                batch_size=params["model"]["batch_size"],
+                stride=params["model"]["time_stride"],
                 standardize=False,  # the ts is already standardized
             )
             # save the original output to a h5 file
@@ -108,8 +108,8 @@ def main(params: DictConfig) -> None:
             h5_dset_path=h5_dset_path,
             model=model,
             seq_length=params["model"]["seq_length"],
-            time_stride=params["data"]["time_stride"],
-            lag=params["data"]["lag"],
+            time_stride=params["model"]["time_stride"],
+            lag=params["model"]["lag"],
             compute_edge_index=compute_edge_index,
             thres=thres,
         )

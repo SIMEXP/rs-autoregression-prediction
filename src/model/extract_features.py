@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-from fmri_autoreg.data.load_data import make_input_labels
+from fmri_autoreg.data.load_data import make_seq
 from src.data.load_data import load_data
 from torch_geometric.nn import ChebConv
 
@@ -38,14 +38,11 @@ def extract_convlayers(
     """Extract conv layers from the pretrained model for one subject."""
     # load data. No standardisation as it's already done.
     ts = load_data(data_file, h5_dset_path, dtype="data")
-    X_ts = make_input_labels(
+    X_ts = make_seq(
         ts,
-        [],
         seq_length,
         time_stride,
         lag,
-        compute_edge_index,
-        thres,
     )[
         0
     ]  # just one subject and the X
