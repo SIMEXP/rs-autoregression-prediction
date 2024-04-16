@@ -1,30 +1,32 @@
-# use a small set to make sure the parameter tuning is doing things
-python src/train.py --multirun hydra=hyperparameters ++hydra.launcher.timeout_min=480 ++data.n_sample=-1
+# hyperparameter
+python src/train.py --multirun hydra=hyperparameters
 
 # debug
-python src/train.py \
+python src/train.py --multirun hydra=scaling \
+  ++hydra.launcher.timeout_min=180 \
   ++data.n_sample=-1 \
-  ++model.FK=\'8,3,8,3,8,3\' \
-  ++model.M=\'8,1\' \
-  ++model.batch_size=127 \
-  ++model.lag=3 \
-  ++model.lr=0.65 \
-  ++model.lr_thres=0.702 \
-  ++model.seq_length=52
-
-# train small default model with the full ukbb
-python src/train.py --multirun hydra=hyperparameters \
-  ++hydra.launcher.timeout_min=240 \
-  ++hydra.launcher.mem_gb=4 \
-  ++torch_device=cpu \
-  ++data.n_sample=-1
+  ++model.FK=\'128,32,128,32,128,32,128,32\' \
+  ++model.M=\'32,16,8,1\' \
+  ++model.batch_size=256 \
+  ++model.lag=1 \
+  ++model.lr=0.04966 \
+  ++model.lr_thres=0.4105 \
+  ++model.dropout=0.02249 \
+  ++model.seq_length=29
 
 # scaling
-python src/train.py --multirun  \
-  hydra=scaling \
-  model=ccn_abstract \
+python src/full_experiment.py --multirun  \
   ++data.n_sample=100,250,500,1000,2000,3000,4000,5000,6000,8000,10000,16000,20000,-1 \
   ++random_state=0,1,2,4,8,42
 
 # extraction - create symlink to model
-python src/extract.py --multirun model_path=outputs/ccn2024/best_model/model.pkl
+# outputs/ccn2024/model/ -> to training results
+python src/extract.py --multirun model_path=outputs/ccn2024/model/model.pkl
+# outputs/ccn2024/extract/ -> to extraction results from outputs/ccn2024/model/
+python src/predict.py --multirun model_path=outputs/ccn2024/extract
+
+# one script for all scaling
+python src/full_experiment.py --multirun  \
+  ++hydra.launcher.timeout_min=60 \
+  ++data.n_sample=100,250,500 \
+  ++random_state=0,1

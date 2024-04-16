@@ -76,7 +76,9 @@ def main(params: DictConfig) -> None:
     convlayers_path = feature_path / "feature_convlayers.h5"
     feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
     test_subjects = feature_path / "test_set_connectome.txt"
-    model_config = OmegaConf.load(feature_path.parent / ".hydra/config.yaml")
+    model_config = OmegaConf.load(
+        feature_path.parent / "model/.hydra/config.yaml"
+    )
     params = OmegaConf.merge(model_config, params)
     log.info(params)
 

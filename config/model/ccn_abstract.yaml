@@ -1,0 +1,19 @@
+---
+lr_patience: 4
+weight_decay: 0
+num_workers: 4
+time_stride: 1
+lag: 1
+edge_index_thres: 0.9
+model: Chebnet
+FC_type: nonshared_uni
+FK: 8,6,8,6,8,6,8,6,8,6,8,6
+M: 16,8,1
+use_bn: true
+bn_momentum: 0.1
+batch_size: 225
+dropout: 0.02249
+lr: 0.04966
+lr_thres: 0.4105
+nb_epochs: 18
+seq_length: 29
