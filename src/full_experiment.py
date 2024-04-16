@@ -360,14 +360,14 @@ def main(params: DictConfig) -> None:
     # save the results
     # json for safe keeping
     with open(
-        output_dir / "simple_classifiers_sex.json",
+        Path(output_dir) / "simple_classifiers_sex.json",
         "w",
     ) as f:
         json.dump(baselines_df, f, indent=4)
 
     baselines_df = pd.DataFrame(baselines_df)
     baselines_df.to_csv(
-        output_dir / "simple_classifiers_sex.tsv",
+        Path(output_dir) / "simple_classifiers_sex.tsv",
         sep="\t",
     )
 
