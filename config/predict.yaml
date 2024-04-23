@@ -5,5 +5,7 @@ defaults:
 
 predict_variable: sex
 phenotype_file: inputs/connectomes/sourcedata/ukbb/ukbb_pheno.tsv
+percentage_sample: 100
+random_state: 42
 # passing extracted feature path is necessary for evaluation
 feature_path: ???

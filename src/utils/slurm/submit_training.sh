@@ -16,8 +16,11 @@ python src/train.py --multirun hydra=scaling \
 
 # scaling
 python src/full_experiment.py --multirun  \
-  ++data.n_sample=100,250,500,1000,2000,3000,4000,5000,6000,8000,10000,16000,20000,-1 \
+  ++hydra.launcher.mem_gb=8 \
+  ++data.n_sample=16000,20000,-1 \
   ++random_state=0,1,2,4,8,42
+  # ++data.n_sample=100,250,500,1000,2000,3000,4000,5000,6000,8000,10000,16000,20000,-1 \
+  # ++random_state=0,1,2,4,8,42
 
 # extraction - create symlink to model
 # outputs/ccn2024/model/ -> to training results
@@ -27,6 +30,6 @@ python src/predict.py --multirun model_path=outputs/ccn2024/extract
 
 # one script for all scaling
 python src/full_experiment.py --multirun  \
-  ++hydra.launcher.timeout_min=60 \
-  ++data.n_sample=100,250,500 \
-  ++random_state=0,1
+  ++hydra.launcher.timeout_min=600 \
+  ++data.n_sample=-1,10000,5000,2500,1250,625,300,150,75 \
+  ++random_state=0,1,2,4,8,42

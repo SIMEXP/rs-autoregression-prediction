@@ -77,13 +77,12 @@ def main(params: DictConfig) -> None:
 
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
-    if n_sample == -1:
-        n_sample = (
-            len(data_reference["train"])
-            + len(data_reference["val"])
-            + len(data_reference["test"])
-        )
-    log.info(f"Experiment on {n_sample} subjects. ")
+    n_sample_pretrain = len(data_reference["train"]) + len(
+        data_reference["val"]
+    )
+    log.info(
+        f"Experiment on {n_sample_pretrain} subjects for pretrain model. "
+    )
 
     tng_data_h5 = data_dir / "data_train.h5"
     val_data_h5 = data_dir / "data_val.h5"

@@ -29,7 +29,7 @@ from sklearn.linear_model import (
     RidgeClassifier,
 )
 from sklearn.metrics import r2_score
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import ShuffleSplit, StratifiedKFold
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import LinearSVC, LinearSVR
 
@@ -123,18 +123,31 @@ def main(params: DictConfig) -> None:
     log.info(f"Working on {device}.")
 
     # load data path
+    with open(params["data_split"], "r") as f:
+        data_split = json.load(f)
+    data_reference = {}
+    data_reference["test"] = data_split["test"]
+    training_candidate = data_split["train"] + data_split["val"]
     n_sample = params["data"]["split"]["n_sample"]
-    data_reference = instantiate(params["data"]["split"])
-
-    with open(Path(output_dir) / "train_test_split.json", "w") as f:
-        json.dump(data_reference, f, indent=2)
-    if n_sample == -1:
-        n_sample = (
-            len(data_reference["train"])
-            + len(data_reference["val"])
-            + len(data_reference["test"])
+    rs = ShuffleSplit(
+        n_splits=1, test_size=0.25, random_state=params["random_state"]
+    )
+    if n_sample != -1:
+        proportion = n_sample / len(training_candidate)
+        sample_select = ShuffleSplit(
+            n_splits=1,
+            train_size=proportion,
+            random_state=params["random_state"],
         )
-    log.info(f"Experiment on {n_sample} subjects. ")
+        sample_index = next(sample_select.split(training_candidate))
+        pretraining_set = [training_candidate[i] for i in sample_index]
+    else:
+        pretraining_set = training_candidate.copy()
+    train_index, val_index = next(rs.split(pretraining_set))
+    data_reference["train"] = [pretraining_set[i] for i in train_index]
+    data_reference["val"] = [pretraining_set[i] for i in val_index]
+
+    log.info(f"Pretrain model on {len(pretraining_set)} subjects.")
 
     tng_data_h5 = data_dir / "data_train.h5"
     val_data_h5 = data_dir / "data_val.h5"
@@ -207,7 +220,6 @@ def main(params: DictConfig) -> None:
 
     log.info("Start extracting features.")
     model = model.eval()
-    subj_list = data_reference["test"]
     horizon = 1
     output_horizon_path = Path(output_dir) / f"feature_horizon-{horizon}.h5"
     with h5py.File(output_horizon_path, "a") as f:
@@ -216,7 +228,7 @@ def main(params: DictConfig) -> None:
         f.attrs["horizon"] = horizon
 
     log.info(f"Predicting t+{horizon} of each subject")
-    for h5_dset_path in subj_list:
+    for h5_dset_path in data_reference["test"]:
         # get the prediction of t+1
         r2, Z, Y = predict_horizon(
             model=model,
@@ -251,7 +263,7 @@ def main(params: DictConfig) -> None:
     thres = params["model"]["edge_index_thres"] if compute_edge_index else None
     if isinstance(model, torch.nn.Module):
         model.to(torch.device(device)).eval()
-    for h5_dset_path in subj_list:
+    for h5_dset_path in data_reference["test"]:
         convlayers = extract_convlayers(
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
@@ -299,7 +311,7 @@ def main(params: DictConfig) -> None:
             baseline_details[key]["data_file"] = output_conv_path
         elif "connectome" in key:
             baseline_details[key]["data_file"] = params["data"]["data_file"]
-            baseline_details[key]["data_file_pattern"] = subj_list
+            baseline_details[key]["data_file_pattern"] = data_reference["test"]
         else:
             pass
     log.info("Predicting sex.")
