@@ -56,7 +56,8 @@ def extract_convlayers(
             hook_handles.append(handle)
     device = next(model.parameters()).device
     # pass the data through pretrained model
-    _ = model(torch.tensor(X_ts).to(device))
+    X_ts = torch.tensor(X_ts, dtype=torch.float32, device=device)
+    _ = model(X_ts)
     convlayers = []
     # size of each layer (time series, parcel, layer feature F)
     for layer in save_output.outputs:
