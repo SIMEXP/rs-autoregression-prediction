@@ -1,13 +1,15 @@
-import csv
+"""
+Take a set of parameters and train on different sample size.
+Use the same hold out test for downstream.
+
+"""
+
 import json
 import logging
 import os
 import pickle as pk
-import re
 from datetime import datetime
-from math import ceil
 from pathlib import Path
-from typing import List, Tuple, Union
 
 import h5py
 import hydra
@@ -16,22 +18,15 @@ import numpy as np
 import pandas as pd
 import torch
 from fmri_autoreg.data.load_data import make_input_labels
-from fmri_autoreg.models.predict_model import predict_horizon, predict_model
+from fmri_autoreg.models.predict_model import predict_horizon
 from fmri_autoreg.models.train_model import train
 from fmri_autoreg.tools import load_model
-from hydra.utils import instantiate
 from omegaconf import DictConfig
 from seaborn import lineplot
-from sklearn.linear_model import (
-    LinearRegression,
-    LogisticRegression,
-    Ridge,
-    RidgeClassifier,
-)
-from sklearn.metrics import r2_score
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.model_selection import ShuffleSplit, StratifiedKFold
-from sklearn.neural_network import MLPClassifier, MLPRegressor
-from sklearn.svm import LinearSVC, LinearSVR
+from sklearn.neural_network import MLPClassifier
+from sklearn.svm import LinearSVC
 
 baseline_details = {
     "connectome": {
@@ -139,7 +134,7 @@ def main(params: DictConfig) -> None:
             train_size=proportion,
             random_state=params["random_state"],
         )
-        sample_index = next(sample_select.split(training_candidate))
+        sample_index, _ = next(sample_select.split(training_candidate))
         pretraining_set = [training_candidate[i] for i in sample_index]
     else:
         pretraining_set = training_candidate.copy()
