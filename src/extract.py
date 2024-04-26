@@ -1,20 +1,23 @@
-import argparse
-import csv
+"""
+Extract features from the model.
+If model was trained on gpu, this script should
+be run on a machine with a gpu.
+```
+python src/extract.py --multirun \
+    model_path=outputs/ccn2024/model/model.pkl
+```
+"""
 import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Union
 
 import h5py
 import hydra
-import numpy as np
-import pandas as pd
 import torch
 from fmri_autoreg.models.predict_model import predict_horizon
 from fmri_autoreg.tools import load_model
-from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 

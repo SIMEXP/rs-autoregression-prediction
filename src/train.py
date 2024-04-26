@@ -1,12 +1,20 @@
-import csv
+"""
+Example: Hyperparameter tuning with orion
+```
+python src/train.py --multirun hydra=hyperparameters
+```
+
+Example: Run scaling on different number of samples
+```
+python src/train.py --multirun hydra=scaling \
+  ++data.n_sample=-1,100,200,300
+```
+"""
 import json
 import logging
 import os
 import pickle as pk
-import re
-from math import ceil
 from pathlib import Path
-from typing import List, Tuple, Union
 
 import h5py
 import hydra

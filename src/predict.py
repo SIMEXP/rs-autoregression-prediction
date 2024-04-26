@@ -1,16 +1,28 @@
 """
 Execute at the root of the repo, not in the code directory.
+
+To execute the code,
+you need to create a directory structure as follows:
+```
+.
+└── <name of your analysis>/
+    ├── extract  -> symlink to the output of the `extract` script
+    └── model  -> symlink to the output of a fitted model
+```
+python src/predict.py --multirun \
+  feature_path=/path/to/<name of your analysis>/extract \
+  ++phenotype_file=/path/to/phenotype.tsv
+```
+
+Currently the script hard coded to predict sex or age.
 """
-import argparse
 import json
 import logging
 from pathlib import Path
 
-import h5py
 import hydra
 import numpy as np
 import pandas as pd
-from hydra.utils import get_original_cwd, instantiate, to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from sklearn.linear_model import (
     LinearRegression,
@@ -18,7 +30,7 @@ from sklearn.linear_model import (
     Ridge,
     RidgeClassifier,
 )
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import ShuffleSplit, StratifiedKFold
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import LinearSVC, LinearSVR
 
@@ -84,7 +96,20 @@ def main(params: DictConfig) -> None:
 
     # load test set subject path from the training
     with open(test_subjects, "r") as f:
-        subj = f.read().splitlines()
+        hold_outs = f.read().splitlines()
+    percentage_sample = params["percentage_sample"]
+    if percentage_sample != 100:
+        proportion = percentage_sample / 100
+        sample_select = ShuffleSplit(
+            n_splits=1,
+            train_size=proportion,
+            random_state=params["random_state"],
+        )
+        sample_index, _ = next(sample_select.split(hold_outs))
+        subj = [hold_outs[i] for i in sample_index]
+    else:
+        subj = hold_outs.copy()
+    log.info(f"Downstream prediction on {len(subj)}.")
 
     for key in baseline_details:
         if "r2" in key:
@@ -98,7 +123,7 @@ def main(params: DictConfig) -> None:
             pass
     log.info(f"Predicting {params['predict_variable']}.")
 
-    if params["predict_variable"] == "sex":
+    if params["predict_variable_type"] == "binary":
         # four baseline models for sex
         svm = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
         lr = LogisticRegression(
@@ -112,7 +137,7 @@ def main(params: DictConfig) -> None:
         )
         clf_names = ["SVM", "LogisticR", "Ridge", "MLP"]
 
-    elif params["predict_variable"] == "age":  # need to fix this
+    elif params["predict_variable_type"] == "numerical":  # need to fix this
         # four baseline models for age
         svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
         lr = LinearRegression(n_jobs=-1)
@@ -124,7 +149,9 @@ def main(params: DictConfig) -> None:
         )
         clf_names = ["SVM", "LinearR", "Ridge", "MLP"]
     else:
-        raise ValueError("predict_variable must be either sex or age")
+        raise ValueError(
+            "predict_variable_type must be either binary or numerical"
+        )
 
     baselines_df = {
         "feature": [],
@@ -138,14 +165,19 @@ def main(params: DictConfig) -> None:
         log.info(f"Load data {baseline_details[measure]['data_file']}")
         if measure == "connectome":
             dset_path = baseline_details[measure]["data_file_pattern"]
-        else:
+        elif percentage_sample == 100:
             dset_path = load_h5_data_path(
                 baseline_details[measure]["data_file"],
                 baseline_details[measure]["data_file_pattern"],
-                shuffle=True,
-                random_state=params["random_state"],
             )
-        log.info(f"found {len(dset_path)} subjects with {measure} data.")
+        else:
+            dset_path = []
+            for connectome_path in subj:
+                dp = connectome_path.replace(
+                    "timeseries",
+                    baseline_details[measure]["data_file_pattern"],
+                )
+                dset_path.append(dp)
 
         dataset = get_model_data(
             baseline_details[measure]["data_file"],
@@ -155,43 +187,25 @@ def main(params: DictConfig) -> None:
             label=params["predict_variable"],
             log=log,
         )
+        log.info(f"found {len(dataset['data'])} subjects with {measure} data.")
         log.info("Start training...")
-        # sfk = StratifiedKFold(n_splits=5, shuffle=True)
-        # folds = sfk.split(dataset["data"], dataset["label"])
-        # average_performance = {clf_name: [] for clf_name in clf_names}
-        # for i, (tng, tst) in enumerate(folds, start=1):
-        #     log.info(f"Fold {i}")
-        #     for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
-        #         clf.fit(dataset["data"][tng], dataset["label"][tng])
-        #         score = clf.score(
-        #             dataset["data"][tst], dataset["label"][tst]
-        #         )
-        #         log.info(
-        #             f"{measure} - {clf_name} fold {i}: {score:.3f}"
-        #         )
-        #         baselines_df["feature"].append(measure)
-        #         baselines_df["score"].append(score)
-        #         baselines_df["classifier"].append(clf_name)
-        #         baselines_df["fold"].append(i)
-        #         average_performance[clf_name].append(score)
-        # for clf_name in clf_names:
-        #     acc = np.mean(average_performance[clf_name])
-        #     log.info(
-        #         f"{measure} - {clf_name} average score: {acc:.3f}"
-        #     )
-
-        tng, tst = next(
-            StratifiedKFold(n_splits=5, shuffle=True).split(
-                dataset["data"], dataset["label"]
-            )
-        )  # only one fold
-        for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
-            clf.fit(dataset["data"][tng], dataset["label"][tng])
-            score = clf.score(dataset["data"][tst], dataset["label"][tst])
-            log.info(f"{measure} - {clf_name} score: {score:.3f}")
-            baselines_df["feature"].append(measure)
-            baselines_df["score"].append(score)
-            baselines_df["classifier"].append(clf_name)
+        sfk = StratifiedKFold(n_splits=5, shuffle=True)
+        folds = sfk.split(dataset["data"], dataset["label"])
+        average_performance = {clf_name: [] for clf_name in clf_names}
+        for i, (tng, tst) in enumerate(folds, start=1):
+            log.info(f"Fold {i}")
+            for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
+                clf.fit(dataset["data"][tng], dataset["label"][tng])
+                score = clf.score(dataset["data"][tst], dataset["label"][tst])
+                log.info(f"{measure} - {clf_name} fold {i}: {score:.3f}")
+                baselines_df["feature"].append(measure)
+                baselines_df["score"].append(score)
+                baselines_df["classifier"].append(clf_name)
+                baselines_df["fold"].append(i)
+                average_performance[clf_name].append(score)
+        for clf_name in clf_names:
+            acc = np.mean(average_performance[clf_name])
+            log.info(f"{measure} - {clf_name} average score: {acc:.3f}")
 
     # save the results
     # json for safe keeping
