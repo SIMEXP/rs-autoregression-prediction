@@ -3,6 +3,8 @@ outputs/
 *tmp.h5
 .ruff_cache/
 .vscode/
+NOTES
+*.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
