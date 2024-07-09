@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+sns.set_theme(style="whitegrid")
+
 
 def peek(iterable):
     try:
@@ -25,15 +27,19 @@ def peek(iterable):
 def main():
     path_success_job = Path(
         "outputs/autoreg/full_experiment/ccn2024_scaling"
-    ).glob("*/*/simple_classifiers_sex.tsv")
+    ).glob("**/simple_classifiers_sex.tsv")
     path_success_job = peek(path_success_job)
 
     scaling_stats = pd.DataFrame()
     for p in path_success_job:
         # parse the path and get number of subjects
-        n_sample = int(p.parts[-2].split("n-")[-1].split("_")[0])
-        if n_sample == -1:
-            n_sample = 25992
+        log_file = p.parent / "full_experiment.log"
+        with open(log_file, "r") as f:
+            log_text = f.read()
+        # parse the path and get number of subjects
+        n_sample = int(
+            re.search(r"Experiment on ([\d]*) subjects", log_text).group(1)
+        )
         # get random seed
         random_seed = int(p.parts[-2].split("seed-")[-1].split("_")[0])
         # load r2_val.npy get mean r2
@@ -69,6 +75,8 @@ def main():
         df = pd.DataFrame(
             [
                 n_sample,
+                int(n_sample * 0.8),
+                int(n_sample * 0.2),
                 random_seed,
                 mean_r2_val,
                 mean_r2_tng,
@@ -77,6 +85,8 @@ def main():
             ],
             index=[
                 "n_sample",
+                "n_sample_train",
+                "n_sample_downstream",
                 "random_seed",
                 "mean_r2_val",
                 "mean_r2_tng",
@@ -128,20 +138,20 @@ def main():
     # plot
     sns.lineplot(
         data=scaling_stats,
-        x="n_sample",
+        x="n_sample_train",
         y="mean_r2_tng",
         marker="o",
         label="Traing set",
     )
     sns.lineplot(
         data=scaling_stats,
-        x="n_sample",
+        x="n_sample_train",
         y="mean_r2_val",
         marker="o",
         label="Validation set",
     )
-    plt.ylim(0.12, 0.19)
-    plt.xlabel("Number of subject in the scaling experiment")
+    plt.ylim(0.10, 0.19)
+    plt.xlabel("Number of subject in model training")
     plt.ylabel("R-squared")
     plt.legend()
     plt.title("R-squared of t+1 prediction")
@@ -151,11 +161,11 @@ def main():
     plt.figure(figsize=(7, 4.5))
     sns.lineplot(
         data=scaling_stats,
-        x="n_sample",
+        x="n_sample_train",
         y="runtime_log",
         marker="o",
     )
-    plt.xlabel("Number of subject in the scaling experiment")
+    plt.xlabel("Number of subject in model training")
     plt.ylabel("log10(runtime) (minutes)")
     plt.title("Runtime of training a group model")
     plt.savefig("outputs/ccn2024/scaling_runtime_plot.png")
@@ -176,14 +186,23 @@ def main():
             "R-squared map",
         ],
     ):
-        sns.lineplot(
-            data=scaling_stats, x="n_sample", y=y, marker="o", label=label
-        )
-    plt.xlabel("Number of subject in the scaling experiment")
+        if label in [
+            "connectomes",
+            "standard deviation pooling",
+            "R-squared map",
+        ]:
+            sns.lineplot(
+                data=scaling_stats,
+                x="n_sample_downstream",
+                y=y,
+                marker="o",
+                label=label,
+            )
+    plt.xlabel("Number of subject in prediction task")
     plt.ylabel("Accuracy")
     plt.legend()
     plt.title("Sex prediction accuracy with SVM")
-    plt.savefig("outputs/ccn2024/scaling_connectome.png")
+    plt.savefig("outputs/ccn2024/_scaling_connectome.png")
     plt.close()
 
 

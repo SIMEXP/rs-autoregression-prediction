@@ -39,8 +39,6 @@ def main(params: DictConfig) -> None:
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     log.info(f"Working on {device}.")
-    compute_edge_index = "Chebnet" in params["model"]["model"]
-    thres = params["model"]["edge_index_thres"] if compute_edge_index else None
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
     log.info(f"Current working directory : {os.getcwd()}")
@@ -113,8 +111,6 @@ def main(params: DictConfig) -> None:
             seq_length=params["model"]["seq_length"],
             time_stride=params["model"]["time_stride"],
             lag=params["model"]["lag"],
-            compute_edge_index=compute_edge_index,
-            thres=thres,
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:

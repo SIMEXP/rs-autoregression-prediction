@@ -23,6 +23,7 @@ from pathlib import Path
 import hydra
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from omegaconf import DictConfig, OmegaConf
 from sklearn.linear_model import (
     LinearRegression,
@@ -75,6 +76,15 @@ baseline_details = {
 log = logging.getLogger(__name__)
 
 
+def train(dataset, tng, tst, clf, clf_name):
+    clf.fit(dataset["data"][tng], dataset["label"][tng])
+    score = clf.score(dataset["data"][tst], dataset["label"][tst])
+    return {
+        "score": score,
+        "classifier": clf_name,
+    }
+
+
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
     from src.data.load_data import get_model_data, load_h5_data_path
@@ -109,7 +119,11 @@ def main(params: DictConfig) -> None:
         subj = [hold_outs[i] for i in sample_index]
     else:
         subj = hold_outs.copy()
-    log.info(f"Downstream prediction on {len(subj)}.")
+
+    log.info(
+        f"Downstream prediction on {len(subj)}, "
+        f"{percentage_sample}% of the full sample."
+    )
 
     for key in baseline_details:
         if "r2" in key:
@@ -124,42 +138,43 @@ def main(params: DictConfig) -> None:
     log.info(f"Predicting {params['predict_variable']}.")
 
     if params["predict_variable_type"] == "binary":
-        # four baseline models for sex
-        svm = LinearSVC(C=100, penalty="l2", max_iter=1000000, random_state=42)
-        lr = LogisticRegression(
-            penalty="l2", max_iter=100000, random_state=42, n_jobs=-1
-        )
-        rr = RidgeClassifier(random_state=42, max_iter=100000)
-        mlp = MLPClassifier(
-            hidden_layer_sizes=(64, 64),
-            max_iter=100000,
-            random_state=42,
-        )
-        clf_names = ["SVM", "LogisticR", "Ridge", "MLP"]
-
+        clf_options = {
+            "SVM": LinearSVC(
+                C=100,
+                penalty="l2",
+                class_weight="balanced",
+                max_iter=1000000,
+                random_state=params["random_state"],
+            ),
+            "LogisticR": LogisticRegression(
+                penalty="l2",
+                class_weight="balanced",
+                max_iter=100000,
+                random_state=params["random_state"],
+                n_jobs=-1,
+            ),
+            "Ridge": RidgeClassifier(
+                class_weight="balanced",
+                random_state=params["random_state"],
+                max_iter=100000,
+            ),
+        }
     elif params["predict_variable_type"] == "numerical":  # need to fix this
-        # four baseline models for age
-        svm = LinearSVR(C=100, max_iter=1000000, random_state=42)
-        lr = LinearRegression(n_jobs=-1)
-        rr = Ridge(random_state=42, max_iter=100000)
-        mlp = MLPRegressor(
-            hidden_layer_sizes=(64, 64),
-            max_iter=100000,
-            random_state=42,
-        )
-        clf_names = ["SVM", "LinearR", "Ridge", "MLP"]
+        clf_options = {
+            "SVM": LinearSVR(
+                C=100, max_iter=1000000, random_state=params["random_state"]
+            ),
+            "LinearR": LinearRegression(n_jobs=-1),
+            "Ridge": Ridge(
+                random_state=params["random_state"], max_iter=100000
+            ),
+        }
     else:
         raise ValueError(
             "predict_variable_type must be either binary or numerical"
         )
 
-    baselines_df = {
-        "feature": [],
-        "score": [],
-        "classifier": [],
-        # "fold": [],
-    }
-
+    df_results = []
     for measure in baseline_details:
         log.info(f"Start training {measure}")
         log.info(f"Load data {baseline_details[measure]['data_file']}")
@@ -189,34 +204,25 @@ def main(params: DictConfig) -> None:
         )
         log.info(f"found {len(dataset['data'])} subjects with {measure} data.")
         log.info("Start training...")
-        sfk = StratifiedKFold(n_splits=5, shuffle=True)
-        folds = sfk.split(dataset["data"], dataset["label"])
-        average_performance = {clf_name: [] for clf_name in clf_names}
-        for i, (tng, tst) in enumerate(folds, start=1):
-            log.info(f"Fold {i}")
-            for clf_name, clf in zip(clf_names, [svm, lr, rr, mlp]):
-                clf.fit(dataset["data"][tng], dataset["label"][tng])
-                score = clf.score(dataset["data"][tst], dataset["label"][tst])
-                log.info(f"{measure} - {clf_name} fold {i}: {score:.3f}")
-                baselines_df["feature"].append(measure)
-                baselines_df["score"].append(score)
-                baselines_df["classifier"].append(clf_name)
-                baselines_df["fold"].append(i)
-                average_performance[clf_name].append(score)
-        for clf_name in clf_names:
-            acc = np.mean(average_performance[clf_name])
+
+        sfk = StratifiedKFold(
+            n_splits=5, shuffle=True, random_state=params["random_state"]
+        )
+        out = Parallel(n_jobs=4, verbose=100, pre_dispatch="1.5*n_jobs")(
+            delayed(train)(dataset, tng, tst, clf_options[key], key)
+            for key in clf_options
+            for tng, tst in sfk.split(dataset["data"], dataset["label"])
+        )
+        df_out = pd.DataFrame(out)
+        df_out["feature"] = measure
+        df_results.append(df_out)
+
+        df_out = df_out.groupby("classifier").mean()
+        for clf_name, acc in zip(df_out.index, df_out["score"]):
             log.info(f"{measure} - {clf_name} average score: {acc:.3f}")
 
-    # save the results
-    # json for safe keeping
-    with open(
-        output_dir / f"simple_classifiers_{params['predict_variable']}.json",
-        "w",
-    ) as f:
-        json.dump(baselines_df, f, indent=4)
-
-    baselines_df = pd.DataFrame(baselines_df)
-    baselines_df.to_csv(
+    df_results = pd.concat(df_results).reset_index(drop=True)
+    df_results.to_csv(
         output_dir / f"simple_classifiers_{params['predict_variable']}.tsv",
         sep="\t",
     )
