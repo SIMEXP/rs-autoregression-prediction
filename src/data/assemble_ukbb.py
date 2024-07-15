@@ -135,10 +135,11 @@ def main():
         new_f.create_dataset("/participant_id", data=valid_subject)
 
     print(f"data with connectome and phenotype data: {len(valid_subject)}")
-    phenotype = phenotype[phenotype["participant_id"].isin(valid_subject)]
+    phenotype = phenotype.set_index("participant_id")
+    phenotype = phenotype.loc[valid_subject, :]
 
     # save the phenotype data as well
-    phenotype.to_csv(output_pheno_path, sep="\t", index=False)
+    phenotype.to_csv(output_pheno_path, sep="\t")
 
     print(
         "Create a balanced sample based on confounds for downstream analysis."
@@ -146,7 +147,8 @@ def main():
     downstreams = {}
     with open(phenotype_meta, "r") as f:
         meta = json.load(f)
-    diagnosis_groups = list(meta["diagnosis"]["labels"].keys()).remove("HC")
+    diagnosis_groups = list(meta["diagnosis"]["labels"].keys())
+    diagnosis_groups.remove("HC")
 
     for d in diagnosis_groups:
         select_sample = gcb.class_balance(
@@ -163,13 +165,13 @@ def main():
         fig, axes = plt.subplots(1, 4, figsize=(20, 5))
         fig.suptitle(
             f"Confound balanced sample (N={len(d_subjects)}): "
-            + meta[d]["instance"][1]["description"]
+            f"{meta[d]['instance']['1']['description']}"
         )
         for ax, c in zip(
             axes, ["sex", "age", "mean_fd_raw", "proportion_kept"]
         ):
             sns.histplot(x=c, data=df, hue=d, kde=True, ax=ax)
-        fig.savefig(output_downstream_sample.replace(".json", "_{d}.png"))
+        fig.savefig(output_downstream_sample.replace(".json", f"_{d}.png"))
 
 
 if __name__ == "__main__":
