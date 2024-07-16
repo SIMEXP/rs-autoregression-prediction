@@ -7,16 +7,12 @@ Dependencies noted in the requirements.txt file of this directory.
 """
 import argparse
 import fnmatch
-import json
 import re
 import tarfile
 from pathlib import Path
 
 import h5py
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
-from general_class_balancer import general_class_balancer as gcb
 from tqdm import tqdm
 
 
@@ -86,16 +82,10 @@ def main():
     print(args)
     connectome_archive = args.input
     phenotype_file = str(args.phenotype_file)
-    phenotype_meta = phenotype_file.replace(".tsv", ".json")
     path_h5 = str(args.output)
     output_pheno_path = path_h5.replace(".h5", "_phenotype.tsv")
-    output_downstream_sample = path_h5.replace(
-        ".h5", "_downstream_sample.json"
-    )
 
-    confounds = ["sex", "age", "mean_fd_raw", "proportion_kept"]
-
-    phenotype = pd.read_csv(args.phenotype_file, sep="\t")
+    phenotype = pd.read_csv(phenotype_file, sep="\t")
     subjects = phenotype["participant_id"].tolist()
     print(
         f"Found {len(subjects)} subjects that passed QC with phenotype data."
@@ -137,44 +127,17 @@ def main():
     print(f"data with connectome and phenotype data: {len(valid_subject)}")
     phenotype = phenotype.set_index("participant_id")
     phenotype = phenotype.loc[valid_subject, :]
+    phenotype = phenotype.sort_index()
 
     # save the phenotype data as well
     phenotype.to_csv(output_pheno_path, sep="\t")
 
-    print(
-        "Create a balanced sample based on confounds for downstream analysis."
-    )
-    downstreams = {}
-    with open(phenotype_meta, "r") as f:
-        meta = json.load(f)
-    diagnosis_groups = list(meta["diagnosis"]["labels"].keys())
-    diagnosis_groups.remove("HC")
+    # sanity check
+    with h5py.File(path_h5, "r") as h5file:
+        participant_id = list(h5file["ukbb"].keys())
 
-    for d in diagnosis_groups:
-        select_sample = gcb.class_balance(
-            phenotype[d].values.astype(int),
-            phenotype[confounds].values.T,
-            plim=0.05,
-            random_seed=42,  # fix random seed for reproducibility
-        )
-        downstreams[d] = phenotype.index[select_sample].tolist()
-    with open(output_downstream_sample, "w") as f:
-        json.dump(downstreams, f, indent=2)
-
-    # plot the distribution of confounds
-    for d in diagnosis_groups:
-        d_subjects = downstreams[d]
-        df = phenotype.loc[d_subjects, :]
-        fig, axes = plt.subplots(1, 4, figsize=(20, 5))
-        fig.suptitle(
-            f"Confound balanced sample (N={len(d_subjects)}): "
-            f"{meta[d]['instance']['1']['description']}"
-        )
-        for ax, c in zip(
-            axes, ["sex", "age", "mean_fd_raw", "proportion_kept"]
-        ):
-            sns.histplot(x=c, data=df, hue=d, kde=True, ax=ax)
-        fig.savefig(output_downstream_sample.replace(".json", f"_{d}.png"))
+    assert len(valid_subject) == phenotype.shape[0]
+    assert len(valid_subject) == len(participant_id)
 
 
 if __name__ == "__main__":
