@@ -152,7 +152,10 @@ def main():
 
     for d in diagnosis_groups:
         select_sample = gcb.class_balance(
-            phenotype[d].values.astype(int), phenotype[confounds].values.T
+            phenotype[d].values.astype(int),
+            phenotype[confounds].values.T,
+            plim=0.05,
+            random_seed=42,  # fix random seed for reproducibility
         )
         downstreams[d] = phenotype.index[select_sample].tolist()
     with open(output_downstream_sample, "w") as f:
