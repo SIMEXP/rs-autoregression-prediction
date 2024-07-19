@@ -1,7 +1,11 @@
-data_file: inputs/connectomes/ukbb.h5
-standardize: false
-n_embed: 197
-n_sample: -1
+---
+defaults:
+  - _self_
+  - default
+
+data_file: inputs/connectomes/ukbb_libral_scrub_20240716.h5
+phenotype_file: inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.tsv
+phenotype_json: inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.json
 
 split:  # training and evaluation
   _target_: src.data.load_data.load_ukbb_dset_path

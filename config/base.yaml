@@ -1,0 +1,8 @@
+---
+defaults:
+  - _self_
+  - hydra: default
+
+verbose: 2
+random_state: 42
+return_type: float

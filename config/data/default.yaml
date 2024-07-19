@@ -1,0 +1,11 @@
+---
+standardize: false
+n_embed: 197
+hold_out_set: 0.20
+n_sample: -1
+class_balance_confounds:
+  - site
+  - sex
+  - age
+  - mean_fd_raw
+  - proportion_kept
