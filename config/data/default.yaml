@@ -1,7 +1,9 @@
 ---
 standardize: false
 n_embed: 197
+atlas_desc: atlas-MIST_desc-${data.n_embed}
 hold_out_set: 0.20
+validation_set: 0.25
 n_sample: -1
 class_balance_confounds:
   - site
