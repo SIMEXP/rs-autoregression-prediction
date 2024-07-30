@@ -23,12 +23,12 @@ import numpy as np
 import pandas as pd
 import torch
 from fmri_autoreg.data.load_data import make_input_labels
-from fmri_autoreg.models.predict_model import predict_model
 from fmri_autoreg.models.train_model import train
+from fmri_autoreg.tools import chebnet_argument_resolver
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 from seaborn import lineplot
-from sklearn.metrics import r2_score
+from torchinfo import summary
 
 
 def convert_bytes(num):
@@ -131,6 +131,8 @@ def main(params: DictConfig) -> None:
             f"Old batch size: {train_param['batch_size']}."
         )
         train_param["batch_size"] = n_seq
+    if compute_edge_index:  # chebnet
+        train_param = chebnet_argument_resolver(train_param)
 
     log.info("Start training.")
     (
@@ -140,6 +142,20 @@ def main(params: DictConfig) -> None:
         losses,
         _,
     ) = train(train_param, train_data, verbose=params["verbose"])
+
+    # get model info
+    with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
+        f.write(
+            summary(
+                model,
+                input_size=(
+                    train_param["batch_size"],
+                    train_param["n_embed"],
+                    n_seq,
+                ),
+            )
+        )
+
     # save training results
     np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
     np.save(os.path.join(output_dir, "mean_r2_val.npy"), mean_r2_val)
