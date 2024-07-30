@@ -1,14 +1,9 @@
-data_file: inputs/connectomes/ukbb.h5
-standardize: false
-n_embed: 197
-n_sample: -1
+---
+defaults:
+  - _self_
+  - default
 
-split:  # training and evaluation
-  _target_: src.data.load_data.load_ukbb_dset_path
-  path: ${data.data_file}
-  atlas_desc: atlas-MIST_desc-${data.n_embed}
-  n_sample: ${data.n_sample}
-  val_set: 0.20
-  test_set: 0.20
-  segment: 1
-  random_state: ${random_state}
+data_file: inputs/connectomes/ukbb_libral_scrub_20240716_connectome.h5
+phenotype_file: inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.tsv
+phenotype_json: inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.json
+segment: 1
