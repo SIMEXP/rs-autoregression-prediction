@@ -27,7 +27,7 @@ from fmri_autoreg.data.load_data import make_input_labels
 from fmri_autoreg.models.train_model import train
 from fmri_autoreg.tools import chebnet_argument_resolver
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from seaborn import lineplot
 from torchinfo import summary
 from sklearn.model_selection import train_test_split
@@ -138,7 +138,7 @@ def main(params: DictConfig) -> None:
 
     tng_data_h5 = data_dir / "data_train.h5"
     val_data_h5 = data_dir / "data_val.h5"
-    tng_data_h5, edge_index = make_input_labels(
+    tng_data_h5, edge_index, input_size = make_input_labels(
         data_file=params["data"]["data_file"],
         dset_paths=data_reference["train"],
         params=train_param,
@@ -146,7 +146,7 @@ def main(params: DictConfig) -> None:
         compute_edge_index=compute_edge_index,
         log=log,
     )
-    val_data_h5, _ = make_input_labels(
+    val_data_h5, _, _ = make_input_labels(
         data_file=params["data"]["data_file"],
         dset_paths=data_reference["val"],
         params=train_param,
@@ -177,6 +177,9 @@ def main(params: DictConfig) -> None:
         train_param["batch_size"] = n_seq
     if compute_edge_index:  # chebnet
         train_param = chebnet_argument_resolver(train_param)
+    # save train_param
+    with open(os.path.join(output_dir, "train_param.json"), "w") as f:
+        OmegaConf.save(config=train_param, f=f)
 
     log.info("Start training.")
     (
@@ -189,16 +192,12 @@ def main(params: DictConfig) -> None:
 
     # get model info
     with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
-        f.write(
-            summary(
-                model,
-                input_size=(
-                    train_param["batch_size"],
-                    train_param["n_embed"],
-                    n_seq,
-                ),
-            )
+        model_stats = summary(
+            model,
+            input_size=input_size,
         )
+        summary_str = str(model_stats)
+        f.write(summary_str)
 
     # save training results
     np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
