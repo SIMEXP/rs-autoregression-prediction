@@ -195,6 +195,7 @@ def main(params: DictConfig) -> None:
         model_stats = summary(
             model,
             input_size=input_size,
+            col_names=["input_size", "output_size", "num_params"],
         )
         summary_str = str(model_stats)
         f.write(summary_str)
