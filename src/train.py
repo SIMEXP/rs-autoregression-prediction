@@ -4,10 +4,11 @@ Example: Hyperparameter tuning with orion
 python src/train.py --multirun hydra=hyperparameters
 ```
 
-Example: Run scaling on different number of samples
+Example: Run scaling on different number of samples for the
+model training
 ```
 python src/train.py --multirun hydra=scaling \
-  ++data.n_sample=-1,100,200,300
+  ++data.n_sample=100,200,300,-1
 ```
 """
 import json
@@ -29,6 +30,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from seaborn import lineplot
 from torchinfo import summary
+from sklearn.model_selection import train_test_split
 
 
 def convert_bytes(num):
@@ -38,11 +40,17 @@ def convert_bytes(num):
         num /= 1024.0
 
 
+log = logging.getLogger(__name__)
+
+
 @hydra.main(version_base="1.3", config_path="../config", config_name="train")
 def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
     # if not interactive session of slurm, import submit it
+    from src.data.load_data import load_ukbb_dset_path
+
+    rng = np.random.default_rng(params["random_state"])
 
     if (
         "SLURM_JOB_ID" in os.environ
@@ -80,9 +88,45 @@ def main(params: DictConfig) -> None:
     log.info(f"Working on {device}.")
 
     # load data path
-    n_sample = params["data"]["split"]["n_sample"]
-    data_reference = instantiate(params["data"]["split"])
+    n_sample = params["data"]["n_sample"]
 
+    data_split_json = params["data_split"]
+
+    with open(data_split_json, "r") as f:
+        train_subject = json.load(f)["train"]
+        test_subject = json.load(f)["holdout"]
+
+    rng.shuffle(train_subject)
+
+    if n_sample > 0:
+        train_subject = train_subject[:n_sample]
+
+    train_subject = [f"sub-{s}" for s in train_subject]
+    test_subject = [f"sub-{s}" for s in test_subject]
+
+    train_participant_ids, val_participant_ids = train_test_split(
+        train_subject,
+        test_size=params["data"]["validation_set"],
+        shuffle=True,
+        random_state=params["random_state"],
+    )
+
+    data_reference = {}
+    data_reference["train"] = load_ukbb_dset_path(
+        participant_id=train_participant_ids,
+        atlas_desc=params["data"]["atlas_desc"],
+        segment=params["data"]["segment"],
+    )
+    data_reference["val"] = load_ukbb_dset_path(
+        participant_id=val_participant_ids,
+        atlas_desc=params["data"]["atlas_desc"],
+        segment=params["data"]["segment"],
+    )
+    data_reference["test"] = load_ukbb_dset_path(
+        participant_id=test_subject,
+        atlas_desc=params["data"]["atlas_desc"],
+        segment=params["data"]["segment"],
+    )
     with open(Path(output_dir) / "train_test_split.json", "w") as f:
         json.dump(data_reference, f, indent=2)
     n_sample_pretrain = len(data_reference["train"]) + len(
