@@ -21,14 +21,14 @@ sweeper:
   # default parametrization of the search space
   params:
     model:
-      nb_epochs: uniform(16, 24, discrete=True)
-      FK: choices(["\'128,32,128,32,128,32,128,32,128,32,128,32\'", "\'8,6,8,6,8,6,8,6,8,6,8,6\'", "\'8,3,8,3,8,3\'"])
-      M: choices(["\'32,16,8,1\'", "\'16,8,1\'"])
-      lr: uniform(1e-4, 0.3)
+      nb_epochs: uniform(16, 30, discrete=True)
+      lr: uniform(1e-4, 0.5)
       lr_thres: uniform(1e-6, 1)
-      dropout: uniform(1e-4, 0.3)
-      batch_size: loguniform(128, 256, discrete=True)
-      seq_length: uniform(12, 32, discrete=True)
+      lr_patience: uniform(1, 10, discrete=True)
+      weight_decay: uniform(1e-6, 1)
+      dropout: uniform(1e-4, 0.5)
+      bn_momentum: uniform(0.1, 0.9)
+
 
   experiment:
     name: experiment

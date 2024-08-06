@@ -12,4 +12,4 @@ layers:
   - {F: 8, K: 3, aggr: add}
   - {F: 8, K: 3, aggr: add}
   - {F: 8, K: 3, aggr: add}
-  - {M: 8}
+  - {M: 1}

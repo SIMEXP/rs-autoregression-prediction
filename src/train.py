@@ -29,8 +29,8 @@ from fmri_autoreg.tools import chebnet_argument_resolver
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from seaborn import lineplot
-from torchinfo import summary
 from sklearn.model_selection import train_test_split
+from torchinfo import summary
 
 
 def convert_bytes(num):
@@ -94,7 +94,9 @@ def main(params: DictConfig) -> None:
 
     with open(data_split_json, "r") as f:
         train_subject = json.load(f)["train"]
-        test_subject = json.load(f)["holdout"]
+
+    with open(data_split_json, "r") as f:
+        test_subject = json.load(f)["hold_out"]
 
     rng.shuffle(train_subject)
 
@@ -102,7 +104,6 @@ def main(params: DictConfig) -> None:
         train_subject = train_subject[:n_sample]
 
     train_subject = [f"sub-{s}" for s in train_subject]
-    test_subject = [f"sub-{s}" for s in test_subject]
 
     train_participant_ids, val_participant_ids = train_test_split(
         train_subject,
@@ -110,6 +111,8 @@ def main(params: DictConfig) -> None:
         shuffle=True,
         random_state=params["random_state"],
     )
+
+    test_participant_ids = [f"sub-{s}" for s in test_subject]
 
     data_reference = {}
     data_reference["train"] = load_ukbb_dset_path(
@@ -123,7 +126,7 @@ def main(params: DictConfig) -> None:
         segment=params["data"]["segment"],
     )
     data_reference["test"] = load_ukbb_dset_path(
-        participant_id=test_subject,
+        participant_id=test_participant_ids,
         atlas_desc=params["data"]["atlas_desc"],
         segment=params["data"]["segment"],
     )
@@ -167,6 +170,7 @@ def main(params: DictConfig) -> None:
 
     with h5py.File(tng_data_h5, "r") as h5file:
         n_seq = h5file["input"].shape[0]
+
     if n_seq < train_param["batch_size"]:
         log.info(
             "Batch size is greater than the number of sequences. "
@@ -192,10 +196,25 @@ def main(params: DictConfig) -> None:
 
     # get model info
     with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
+        model_stats = summary(model)
+        summary_str = str(model_stats)
+        f.write(summary_str)
+
+    # get model info
+    with open(os.path.join(output_dir, "model_info_with_input.txt"), "w") as f:
         model_stats = summary(
             model,
-            input_size=input_size,
-            col_names=["input_size", "output_size", "num_params"],
+            input_size=(
+                train_param["batch_size"],
+                train_param["n_embed"],
+                train_param["seq_length"],
+            ),
+            col_names=[
+                "input_size",
+                "output_size",
+                "num_params",
+                "kernel_size",
+            ],
         )
         summary_str = str(model_stats)
         f.write(summary_str)
