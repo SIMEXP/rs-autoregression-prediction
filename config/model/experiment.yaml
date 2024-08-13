@@ -1,5 +1,5 @@
 ---
-nb_epochs: 20
+nb_epochs: 15
 lr: 0.01
 lr_patience: 4
 lr_thres: 0.001

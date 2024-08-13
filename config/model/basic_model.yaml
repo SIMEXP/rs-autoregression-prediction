@@ -12,5 +12,5 @@ FCL: 3
 M: 8
 aggrs: add
 use_bn: true
-dropout: 0
+dropout: 0.1
 bn_momentum: 0.1

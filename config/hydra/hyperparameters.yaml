@@ -21,14 +21,11 @@ sweeper:
   # default parametrization of the search space
   params:
     model:
-      nb_epochs: uniform(16, 30, discrete=True)
-      lr: uniform(1e-4, 0.5)
+      lr: uniform(1e-4, 0.3)
       lr_thres: uniform(1e-6, 1)
-      lr_patience: uniform(1, 10, discrete=True)
-      weight_decay: uniform(1e-6, 1)
-      dropout: uniform(1e-4, 0.5)
-      bn_momentum: uniform(0.1, 0.9)
-
+      weight_decay: uniform(0, 1)
+      dropout: uniform(0, 0.3)
+      bn_momentum: uniform(1e-2, 0.3)
 
   experiment:
     name: experiment
