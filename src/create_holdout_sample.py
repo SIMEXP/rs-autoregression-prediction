@@ -1,3 +1,6 @@
+"""
+python src/create_holdout_sample.py +data=ukbb
+"""
 import json
 import logging
 from pathlib import Path
