@@ -127,7 +127,7 @@ def main(params: DictConfig) -> None:
 
     log.info("Sample report created")
 
-    full_train_sample = [f"sub-{s}" for s in sample["train"]][:100]
+    full_train_sample = [f"sub-{s}" for s in sample["train"]]
     test_participant_ids = [f"sub-{s}" for s in sample["hold_out"]]
     rng.shuffle(full_train_sample)
 
