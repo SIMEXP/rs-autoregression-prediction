@@ -8,7 +8,7 @@ run:
   dir: ${oc.env:SCRATCH}/autoreg/${hydra.job.name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
 sweep:
   dir: ${oc.env:SCRATCH}/autoreg/${hydra.job.name}/multiruns/${now:%Y-%m-%d}_${now:%H-%M-%S}
-  subdir: sample_proportion-${data.proportion_sample}_seed-${random_state}
+  subdir: seed-${random_state}
 
 job_logging:
   handlers:
