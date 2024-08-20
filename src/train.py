@@ -51,21 +51,19 @@ def main(params: DictConfig) -> None:
         # A logger for this file
         log = logging.getLogger(f"Process ID {pid}")
         log.info(f"Process ID {pid}")
-        # # use SLURM_TMPDIR for data_dir
-        # data_dir = Path(os.environ["SLURM_TMPDIR"]) / f"pid_{pid}"
-        # data_dir.mkdir()
-        # tng_data_h5_disc = list(sample_dir.glob("*train.h5"))
-        # val_data_h5_disc  = list(sample_dir.glob("*val.h5"))
-        # # copy tng_data_h5_disc to data_dir
-        # tng_data_h5 = data_dir / "training_data.h5"
-        # val_data_h5 = data_dir / "validation_data.h5"
+        # use SLURM_TMPDIR for data_dir
+        data_dir = Path(os.environ["SLURM_TMPDIR"]) / f"pid_{pid}"
+        data_dir.mkdir()
+        tng_data_h5_disc = list(
+            (LABEL_DIR / f"seed-{params['random_state']}").glob("*train.h5")
+        )[0]
+        # copy tng_data_h5_disc to data_dir
+        tng_data_h5 = data_dir / "training_data.h5"
 
-        # import shutil
-        # log.info(f"Copying {tng_data_h5_disc[0]} to {tng_data_h5}")
-        # shutil.copy(tng_data_h5_disc[0], tng_data_h5)
+        import shutil
 
-        # log.info(f"Copying {val_data_h5_disc[0]} to {val_data_h5}")
-        # shutil.copy(val_data_h5_disc[0], val_data_h5)
+        log.info(f"Copying {tng_data_h5_disc[0]} to {tng_data_h5}...")
+        shutil.copy(tng_data_h5_disc[0], tng_data_h5)
 
     else:
         log = logging.getLogger(__name__)
@@ -83,8 +81,10 @@ def main(params: DictConfig) -> None:
     # flatten the parameters
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     train_param = {**params["model"], **params["data"]}
+    train_param["num_workers"] = params["num_workers"]
     train_param["torch_device"] = device
     train_param["random_state"] = params["random_state"]
+    train_param["checkpoints"] = params["checkpoints"]
     log.info(f"Working on {device}.")
 
     # get path data
@@ -127,7 +127,7 @@ def main(params: DictConfig) -> None:
         mean_r2_tng,
         mean_r2_val,
         losses,
-        _,
+        checkpoints,
     ) = train(train_param, train_data, verbose=params["verbose"])
 
     # get model info
@@ -159,6 +159,12 @@ def main(params: DictConfig) -> None:
     np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
     np.save(os.path.join(output_dir, "mean_r2_val.npy"), mean_r2_val)
     np.save(os.path.join(output_dir, "training_losses.npy"), losses)
+    if "checkpoints" in params:
+        # save a list of dictionaries as pd dataframe
+        checkpoints = pd.DataFrame(checkpoints)
+        checkpoints.to_csv(
+            os.path.join(output_dir, "checkpoints.tsv"), sep="\t"
+        )
     log.info(f"Mean r2 tng: {mean_r2_tng}")
     log.info(f"Mean r2 val: {mean_r2_val}")
 

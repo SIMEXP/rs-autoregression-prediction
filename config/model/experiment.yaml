@@ -4,6 +4,5 @@ lr: 0.01
 lr_patience: 4
 lr_thres: 0.001
 weight_decay: 0
-batch_size: 100
+batch_size: 8192
 edge_index_thres: 0.9
-num_workers: 4

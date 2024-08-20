@@ -8,3 +8,5 @@ defaults:
 verbose: 2
 random_state: 42
 return_type: float
+checkpoints: 0,2,4,6,8,10,12,14,16,18,20
+num_workers: 16
