@@ -1,8 +1,6 @@
 """
 Resource:
-salloc --time=2:00:00 --mem=4G --cpus-per-task=8 --gpus-per-node=1
->> 16384
-
+salloc --time=2:00:00 --mem=16G --cpus-per-task=16 --gpus-per-node=1
 Aim:
  - Fill up the GPU memory with the largest batch size possible
 """
@@ -74,13 +72,13 @@ def get_batch_size(
 
 if __name__ == "__main__":
     for n_emb in [64, 197, 444]:
-        print("3 conv")
         edge_index = get_edges(n_emb)
+        print("our hypothetical biggest model")
         model = Chebnet(
             n_emb=n_emb,
             seq_len=16,
             edge_index=edge_index,
-            FK="8,3,8,3,8,3",
+            FK="16,3,16,3,16,3,16,3,16,3,16,3",
             M="8,1",
             FC_type="nonshared_uni",
             aggrs="add",
@@ -89,25 +87,12 @@ if __name__ == "__main__":
             use_bn=True,
         )
         batch_size = get_batch_size(
-            model, torch.device("cuda"), (n_emb, SEQ), (n_emb,), DATASET_SIZE
-        )
-        print(f"atlas {n_emb}, input length {SEQ}, batch size {batch_size}")
-        del model
-        print("6 conv")
-        model = Chebnet(
-            n_emb=n_emb,
-            seq_len=16,
-            edge_index=edge_index,
-            FK="8,3,8,3,8,3,8,3,8,3,8,3",
-            M="8,1",
-            FC_type="nonshared_uni",
-            aggrs="add",
-            dropout=0.1,
-            bn_momentum=0.1,
-            use_bn=True,
-        )
-        batch_size = get_batch_size(
-            model, torch.device("cuda"), (n_emb, SEQ), (n_emb,), DATASET_SIZE
+            model,
+            torch.device("cuda"),
+            (n_emb, SEQ),
+            (n_emb,),
+            DATASET_SIZE,
+            num_iterations=10,
         )
         print(f"atlas {n_emb}, input length {SEQ}, batch size {batch_size}")
         del model
