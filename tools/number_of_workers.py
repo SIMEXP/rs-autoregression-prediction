@@ -1,4 +1,3 @@
-import multiprocessing as mp
 from time import time
 
 import h5py
@@ -11,11 +10,13 @@ tng_data_h5 = (
     "outputs/sample_for_pretraining/seed-42/sample_seed-42_data-train.h5"
 )
 IS_GPU = False
+N_EMBED = [64, 197, 444]
+BATCHSIZE = [512]
 
-with open("outputs/number_of_workers.txt", "w") as f:
+with open("outputs/performance_info/cpu_number_of_workers.tsv", "w") as f:
     f.write("batch_size\tn_embed\tnum_workers\tepoch_second\n")
 
-for n_embed in [64, 197, 444]:
+for n_embed in N_EMBED:
     if proportion_sample != 1:
         with h5py.File(tng_data_h5, "r") as f:
             tng_length = f[f"n_embed-{n_embed}"]["train"]["input"].shape[0]
@@ -31,7 +32,7 @@ for n_embed in [64, 197, 444]:
             tng_data_h5, n_embed=f"n_embed-{n_embed}", set_type="train"
         )
     for batch_size in [512]:
-        for num_workers in range(4, 34, 2):
+        for num_workers in range(8, 34, 2):
             train_loader = DataLoader(
                 tng_dataset,
                 shuffle=True,
@@ -48,5 +49,7 @@ for n_embed in [64, 197, 444]:
                     pass
             end = time()
             taken = (end - start) / 2
-            with open("outputs/number_of_workers.txt", "a") as f:
+            with open(
+                "outputs/performance_info/cpu_number_of_workers.tsv", "a"
+            ) as f:
                 f.write(f"{batch_size}\t{n_embed}\t{num_workers}\t{taken}\n")
