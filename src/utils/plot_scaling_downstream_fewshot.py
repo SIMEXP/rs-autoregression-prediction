@@ -43,7 +43,7 @@ diagnosis_fullname = {
     "SCZ": "Schizophrenia",
 }
 PREDICTION_DATA = Path(
-    "outputs/neuroips-workshop_2024/downstreams_last-layer/data"
+    "outputs/neuroips-workshop_2024/downstreams_fewshot/data"
 )
 
 
@@ -53,7 +53,7 @@ def main():
     pal = sns.color_palette()
     for d in diagnosis_fullname.keys():
         path_success_job = PREDICTION_DATA.glob(
-            f"data.proportion_sample_*/**/simple_classifiers_{d}.tsv"
+            f"**/simple_classifiers_{d}.tsv"
         )
         scaling_stats = pd.DataFrame()
         for p in path_success_job:
@@ -66,25 +66,23 @@ def main():
                 ).group(1)
             )
             # parse the path and get number of subjects
-            percent_training_sample = p.parents[0].name.split("_")[-1]
-            percent_training_sample = float(percent_training_sample) * 100
             percent_holdout_sample = re.search(
                 r"([\d]*)% of the full sample", log_text
             ).group(1)
             # get random seed
+            print(percent_holdout_sample)
             random_seed = re.search(
                 r"'random\_state': ([\d]+)", log_text
             ).group(1)
             # load connectome accuracy
             prediction = pd.read_csv(p, sep="\t", index_col=0)
             prediction["percent_holdout_sample"] = int(percent_holdout_sample)
-            prediction["percent_training_sample"] = percent_training_sample
             prediction["random_seed"] = random_seed
 
             scaling_stats = pd.concat([scaling_stats, prediction], axis=0)
 
         # sort by n_sample
-        scaling_stats = scaling_stats.sort_values(by="percent_training_sample")
+        scaling_stats = scaling_stats.sort_values(by="percent_holdout_sample")
         # # for each n_sample, sort by random seed
         # scaling_stats = scaling_stats.groupby("percent_training_sample").apply(
         #     lambda x: x.sort_values(by="random_seed")
@@ -92,49 +90,31 @@ def main():
         scaling_stats = scaling_stats.reset_index(drop=True)
 
         scaling_stats.to_csv(
-            PREDICTION_DATA.parent / f"reports/downstream_scaling_{d}.tsv",
+            PREDICTION_DATA.parent / f"reports/downstream_fewshot_{d}.tsv",
             sep="\t",
         )
         # replace feature name
-        scaling_stats["percent_training_sample"] = np.log10(
-            scaling_stats["percent_training_sample"]
-        )
         scaling_stats["feature"] = scaling_stats["feature"].replace(
             feature_fullname
         )
         for clf in scaling_stats["classifier"].unique():
             mask = scaling_stats["classifier"] == clf
-            no_connectome = (
-                scaling_stats["feature"] != "Connectome\n(baseline)"
-            )
-            is_connectome = ~no_connectome
             plt.figure(figsize=(7, 4.5))
-            benchmark = scaling_stats[mask & is_connectome]["score"].mean()
-            plt.axhline(
-                y=benchmark, color=pal[0], linestyle="-.", label="Connectome"
-            )
             # plot
             features = prediction["feature"].unique().tolist()
             sns.lineplot(
-                data=scaling_stats[mask & no_connectome],
-                x="percent_training_sample",
+                data=scaling_stats[mask],
+                x="percent_holdout_sample",
                 y="score",
                 hue="feature",
+                hue_order=feature_fullname.values(),
                 marker="o",
-                errorbar="ci",
-                palette=pal[1 : len(features)],
+                errorbar=("ci", 95),
             )
             if d != "sex":
                 plt.axhline(y=0.5, color="k", linestyle="--", label="Chance")
-            else:
-                plt.axhline(
-                    y=3341 / n_holdout,
-                    color="k",
-                    linestyle="--",
-                    label="Chance",
-                )
-            plt.xlabel("Percent of subject in the pretrained model")
-            plt.xticks(scaling_stats["percent_training_sample"].unique())
+            plt.xlabel("Percent of subject in the downstream task")
+            plt.xticks(scaling_stats["percent_holdout_sample"].unique())
             plt.ylabel("Accuracy")
             plt.legend(bbox_to_anchor=(1, 1))
             plt.title(
@@ -143,7 +123,7 @@ def main():
             plt.tight_layout()
             plt.savefig(
                 PREDICTION_DATA.parent
-                / f"reports/downstream_scaling_{d}_{clf}.png"
+                / f"reports/downstream_fewshot_{d}_{clf}.png"
             )
             plt.close()
 

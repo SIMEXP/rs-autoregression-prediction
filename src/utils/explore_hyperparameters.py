@@ -5,9 +5,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-output_dirs = Path("outputs/autoreg/train/multiruns/2024-08-19_22-43-16").glob(
-    "++model*"
-)
+output_dirs = Path(
+    "outputs/autoreg/train/multiruns/nembed-197_hyperparameters"
+).glob("**/train.log")
 data = []
 
 
@@ -22,12 +22,12 @@ def peek(iterable):
 for p in output_dirs:
     experiment = {
         f.groups()[0]: float(f.groups()[1])
-        for f in re.finditer(r"\+\+model\.([a-z_]*)=([\d\.]*)", p.name)
+        for f in re.finditer(r"model\.([a-z_]*)=([\d\.e?-]*)", p.parent.name)
     }
     experiment["mean_r2_val"] = np.nan
     experiment["runtime"] = np.nan
-    if (p / "model.pkl").exists():
-        with open(p / "train.log", "r") as log:
+    if (p.parent / "model.pkl").exists():
+        with open(p, "r") as log:
             report = log.read()
         mean_r2_val = re.search(r"Mean r2 val: ([\-\.\d]*)", report).groups()[
             0
@@ -47,4 +47,4 @@ for p in output_dirs:
 
 data = pd.DataFrame(data)
 data = data.sort_values("mean_r2_val", ascending=False)
-data.to_csv("explore_hyperparameters.tsv", sep="\t", index=False)
+data.to_csv("_explore_hyperparameters.tsv", sep="\t", index=False)

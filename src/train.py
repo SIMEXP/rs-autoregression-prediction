@@ -29,7 +29,6 @@ from omegaconf import DictConfig, OmegaConf
 from seaborn import lineplot
 from torchinfo import summary
 
-log = logging.getLogger(__name__)
 LABEL_DIR = Path(__file__).parents[1] / "outputs" / "sample_for_pretraining"
 
 
@@ -38,35 +37,25 @@ def main(params: DictConfig) -> None:
     """Train model using parameters dict and save results."""
     # import local library here because sumbitit and hydra being weird
     # if not interactive session of slurm, import submit it
-    tng_data_h5 = list(
-        (LABEL_DIR / f"seed-{params['random_state']}").glob("*train.h5")
-    )[0]
     if (
         "SLURM_JOB_ID" in os.environ
         and os.environ["SLURM_JOB_NAME"] != "interactive"
     ):
-        # import submitit
-        # env = submitit.JobEnvironment()
         pid = os.getpid()
         # A logger for this file
         log = logging.getLogger(f"Process ID {pid}")
         log.info(f"Process ID {pid}")
-        # use SLURM_TMPDIR for data_dir
-        data_dir = Path(os.environ["SLURM_TMPDIR"]) / f"pid_{pid}"
-        data_dir.mkdir()
-        tng_data_h5_disc = list(
-            (LABEL_DIR / f"seed-{params['random_state']}").glob("*train.h5")
-        )[0]
-        # copy tng_data_h5_disc to data_dir
-        tng_data_h5 = data_dir / "training_data.h5"
-
-        import shutil
-
-        log.info(f"Copying {tng_data_h5_disc[0]} to {tng_data_h5}...")
-        shutil.copy(tng_data_h5_disc[0], tng_data_h5)
-
+        tng_data_h5 = (
+            Path(os.environ["SLURM_TMPDIR"])
+            / f"data_{os.environ['SLURM_JOB_ID']}.h5"
+        )
     else:
         log = logging.getLogger(__name__)
+        tng_data_h5 = list(
+            (LABEL_DIR / f"seed-{params['random_state']}").glob("*train.h5")
+        )[
+            0
+        ]  # will be shuffled after loading
 
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     log.info(f"Current working directory : {os.getcwd()}")
@@ -84,20 +73,25 @@ def main(params: DictConfig) -> None:
     train_param["num_workers"] = params["num_workers"]
     train_param["torch_device"] = device
     train_param["random_state"] = params["random_state"]
-    train_param["checkpoints"] = params["checkpoints"]
+    if "checkpoints" in params:
+        train_param["checkpoints"] = params["checkpoints"]
     log.info(f"Working on {device}.")
 
     # get path data
-    with h5py.File(tng_data_h5, "r") as h5file:
-        connectome = h5file[f"n_embed-{train_param['n_embed']}"]["train"][
-            "connectome"
-        ][:]
+    try:
+        with h5py.File(tng_data_h5, "r") as h5file:
+            connectome = h5file[f"n_embed-{train_param['n_embed']}"]["train"][
+                "connectome"
+            ][:]
+    except OSError:
+        log.error(f"File {tng_data_h5} corrupted.")
+        return 1
 
     # get edge index
     edge_index = get_edge_index_threshold(
         connectome, train_param["edge_index_thres"]
     )
-
+    log.info("Loaded connectome.")
     train_data = (tng_data_h5, edge_index)
     del edge_index
 
@@ -118,7 +112,7 @@ def main(params: DictConfig) -> None:
     if compute_edge_index:  # chebnet
         train_param = chebnet_argument_resolver(train_param)
     # save train_param
-    with open(os.path.join(output_dir, "train_param.json"), "w") as f:
+    with open(os.path.join(output_dir, "train_param.yaml"), "w") as f:
         OmegaConf.save(config=train_param, f=f)
 
     log.info("Start training.")
@@ -130,31 +124,6 @@ def main(params: DictConfig) -> None:
         checkpoints,
     ) = train(train_param, train_data, verbose=params["verbose"])
 
-    # get model info
-    with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
-        model_stats = summary(model)
-        summary_str = str(model_stats)
-        f.write(summary_str)
-
-    # get model info
-    with open(os.path.join(output_dir, "model_info_with_input.txt"), "w") as f:
-        model_stats = summary(
-            model,
-            input_size=(
-                train_param["batch_size"],
-                train_param["n_embed"],
-                train_param["seq_length"],
-            ),
-            col_names=[
-                "input_size",
-                "output_size",
-                "num_params",
-                "kernel_size",
-            ],
-        )
-        summary_str = str(model_stats)
-        f.write(summary_str)
-
     # save training results
     np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
     np.save(os.path.join(output_dir, "mean_r2_val.npy"), mean_r2_val)
@@ -165,6 +134,34 @@ def main(params: DictConfig) -> None:
         checkpoints.to_csv(
             os.path.join(output_dir, "checkpoints.tsv"), sep="\t"
         )
+    if params["verbose"] > 3:
+        # get model info
+        with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
+            model_stats = summary(model)
+            summary_str = str(model_stats)
+            f.write(summary_str)
+
+        # get model info
+        with open(
+            os.path.join(output_dir, "model_info_with_input.txt"), "w"
+        ) as f:
+            model_stats = summary(
+                model,
+                input_size=(
+                    train_param["batch_size"],
+                    train_param["n_embed"],
+                    train_param["seq_length"],
+                ),
+                col_names=[
+                    "input_size",
+                    "output_size",
+                    "num_params",
+                    "kernel_size",
+                ],
+            )
+            summary_str = str(model_stats)
+            f.write(summary_str)
+
     log.info(f"Mean r2 tng: {mean_r2_tng}")
     log.info(f"Mean r2 val: {mean_r2_val}")
 

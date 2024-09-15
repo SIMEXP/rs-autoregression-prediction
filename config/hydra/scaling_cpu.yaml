@@ -18,9 +18,9 @@ job_logging:
 
 launcher:
   submitit_folder: ${hydra.sweep.dir}/.submitit/%j
-  timeout_min: 180
-  cpus_per_task: 16
-  gpus_per_node: 1
+  timeout_min: 60
+  cpus_per_task: 10
+  gpus_per_node:
   tasks_per_node: 1
   mem_gb: 16
   nodes: 1
@@ -42,4 +42,4 @@ launcher:
   max_num_timeout: 0
   additional_parameters: {mail-user: '${oc.env:SLACK_EMAIL_BOT}', mail-type: ALL}
   array_parallelism: 256
-  setup:
+  setup: []

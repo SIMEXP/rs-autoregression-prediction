@@ -17,11 +17,12 @@ import h5py
 import hydra
 import torch
 from fmri_autoreg.models.predict_model import predict_horizon
-from fmri_autoreg.tools import load_model
+from fmri_autoreg.tools import chebnet_argument_resolver, load_model
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 log = logging.getLogger(__name__)
+LABEL_DIR = Path(__file__).parents[1] / "outputs" / "sample_for_pretraining"
 
 
 @hydra.main(version_base="1.3", config_path="../config", config_name="extract")
@@ -50,16 +51,18 @@ def main(params: DictConfig) -> None:
     log.info(f"predicting horizon: {horizons}")
 
     # load test set subject path from the training
-    with open(model_path.parent / "train_test_split.json", "r") as f:
+    with open(
+        LABEL_DIR
+        / f"seed-{params['random_state']}"
+        / f"sample_seed-{params['random_state']}_split.json",
+        "r",
+    ) as f:
         subj = json.load(f)
 
-    subj_list = subj["test"]
-
-    # save test data path to a text file for easy future reference
-    with open(output_dir / "test_set_connectome.txt", "w") as f:
-        for item in subj_list:
-            f.write("%s\n" % item)
-
+    subj_list = subj[str(params["data"]["n_embed"])]["test"]
+    model_params = chebnet_argument_resolver(
+        OmegaConf.to_container(params["model"])
+    )
     log.info("Load model")
     model = load_model(model_path)
     if isinstance(model, torch.nn.Module):
@@ -79,13 +82,12 @@ def main(params: DictConfig) -> None:
             # get the prediction of t+1
             r2, Z, Y = predict_horizon(
                 model=model,
-                seq_length=params["model"]["seq_length"],
+                seq_length=params["data"]["seq_length"],
                 horizon=horizon,
                 data_file=params["data"]["data_file"],
                 dset_path=h5_dset_path,
-                batch_size=params["model"]["batch_size"],
-                stride=params["model"]["time_stride"],
-                standardize=False,  # the ts is already standardized
+                batch_size=None,
+                stride=params["data"]["time_stride"],
             )
             # save the original output to a h5 file
             with h5py.File(output_horizon_path, "a") as f:
@@ -108,9 +110,9 @@ def main(params: DictConfig) -> None:
             data_file=params["data"]["data_file"],
             h5_dset_path=h5_dset_path,
             model=model,
-            seq_length=params["model"]["seq_length"],
-            time_stride=params["model"]["time_stride"],
-            lag=params["model"]["lag"],
+            seq_length=params["data"]["seq_length"],
+            time_stride=params["data"]["time_stride"],
+            lag=params["data"]["lag"],
         )
         # save the original output to a h5 file
         with h5py.File(output_conv_path, "a") as f:
@@ -118,7 +120,7 @@ def main(params: DictConfig) -> None:
             f[new_ds_path] = convlayers.numpy()
         convlayers_F = [
             int(F)
-            for i, F in enumerate(params["model"]["FK"].split(","))
+            for i, F in enumerate(model_params["FK"].split(","))
             if i % 2 == 0
         ]
         # get the pooling features of the assigned layer
@@ -138,6 +140,7 @@ def main(params: DictConfig) -> None:
     # save the original output to a h5 file
     with h5py.File(output_conv_path, "a") as f:
         f.attrs["convolution_layers_F"] = convlayers_F
+    log.info("Extraction completed.")
 
 
 if __name__ == "__main__":

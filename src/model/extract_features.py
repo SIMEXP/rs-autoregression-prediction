@@ -74,7 +74,7 @@ def pooling_convlayers(
     convlayers: torch.tensor,
     pooling_methods: str = "average",
     pooling_target: str = "parcel",
-    layer_index: int = -1,
+    layer_index: int = -99,
     layer_structure: Tuple[int] = None,
 ) -> np.array:
     """Pooling the conv layers.
@@ -82,7 +82,7 @@ def pooling_convlayers(
     Args:
         convlayers (torch.tensor) : shape
             (time series, parcel, stack layer feature F)
-        layer_index (int) : the index of the layer to be pooled, -1
+        layer_index (int) : the index of the layer to be pooled, -99
             means pooling all layers.
         pooling_methods (str) : "average", "max", "std"
         pooling_target (str) : keep "parcel" or "timeseries" and parcels
@@ -96,14 +96,14 @@ def pooling_convlayers(
         raise ValueError(f"Pooling method {pooling_methods} is not supported.")
     if pooling_target not in ["parcel", "timeseries"]:
         raise ValueError(f"Pooling target {pooling_target} is not supported.")
-    if layer_index > len(layer_structure):
+    if layer_structure and layer_index > len(layer_structure):
         raise ValueError(
             "The layer index should be smaller than the length of the "
             f"layer structure. layer index is {layer_index} but there "
             f"are {len(layer_structure)} layers."
         )
 
-    if layer_index != -1:  # select the layer to be pooled
+    if layer_index != -99:  # select the layer to be pooled
         if sum(layer_structure) != convlayers.shape[-1]:
             raise ValueError(
                 "The sum of layer structure should be equal to the "

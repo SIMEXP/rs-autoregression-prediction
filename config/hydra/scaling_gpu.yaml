@@ -1,7 +1,6 @@
 ---
 defaults:
   - _self_
-  - override sweeper: orion
   - override launcher: submitit_slurm
 
 # output directory, generated dynamically on each run
@@ -16,55 +15,6 @@ job_logging:
     file:
       # Incorporates fix from https://github.com/facebookresearch/hydra/pull/2242
       filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
-
-sweeper:
-  # default parametrization of the search space
-  params:
-    model:
-      lr: loguniform(1e-5, 1e-2)
-      weight_decay: uniform(1e-6, 1e-4)
-      lr_thres: loguniform(1e-5, 1e-3)
-      lr_patience: choices([4, 5, 6])
-      dropout: uniform(0, 0.5)
-      bn_momentum: uniform(0, 0.99)
-      GCL: choices([3,6,12])
-      F: choices([8,16,32,64])
-      K: choices([3,6,9])
-
-  experiment:
-    name: experiment
-    version: '1'
-
-  algorithm:
-    # type: bohb
-    # config:
-    #   seed: ${random_state}
-    #   min_points_in_model: 20
-    #   top_n_percent: 15
-    #   num_samples: 64
-    #   random_fraction: 0.33
-    #   bandwidth_factor: 3
-    #   min_bandwidth: 1e-3
-    #   parallel_strategy:
-    #     of_type: StatusBasedParallelStrategy
-    #     strategy_configs:
-    #       broken:
-    #         of_type: MaxParallelStrategy
-    type: random
-    config:
-      seed: ${random_state}
-
-  worker:
-    n_workers: -1
-    max_broken: 20
-    max_trials: 100
-
-  storage:
-    type: legacy
-
-    database:
-      type: pickleddb
-      host: database.pkl
 
 launcher:
   submitit_folder: ${hydra.sweep.dir}/.submitit/%j
