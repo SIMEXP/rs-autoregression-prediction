@@ -1,12 +1,13 @@
 ---
-nb_epochs: 20
-lr: 0.01
-lr_patience: 4
-lr_thres: 0.001
-weight_decay: 0
-batch_size: 100
-num_workers: 4
-time_stride: 1
-lag: 1
-seq_length: 16
+# these defaults are from FP's paper
+# https://doi.org/10.1162/imag_a_00228
+nb_epochs: 20  # best was 100 in the paper, use 20 as default for faster iteration for scaling
+batch_size: 512
 edge_index_thres: 0.9
+lr: 1e-2  # default 1e-2, Common ranges include 1e-3 to 1e-1.
+weight_decay: 0  # this has to be really low, like 0 - 0.0001 range
+lr_patience: 4  # default 4
+lr_thres: 1e-3  # default 1e-3
+early_stopping:
+  min_delta: 1e-03
+  tolerance: 3

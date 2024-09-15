@@ -1,17 +1,9 @@
 """
 Execute at the root of the repo, not in the code directory.
 
-To execute the code,
-you need to create a directory structure as follows:
-```
-.
-└── <name of your analysis>/
-    ├── extract  -> symlink to the output of the `extract` script
-    └── model  -> symlink to the output of a fitted model
 ```
 python src/predict.py --multirun \
   feature_path=/path/to/<name of your analysis>/extract \
-  ++phenotype_file=/path/to/phenotype.tsv
 ```
 
 Currently the script hard coded to predict sex or age.
@@ -31,7 +23,11 @@ from sklearn.linear_model import (
     Ridge,
     RidgeClassifier,
 )
-from sklearn.model_selection import ShuffleSplit, StratifiedKFold
+from sklearn.model_selection import (
+    ShuffleSplit,
+    StratifiedKFold,
+    StratifiedShuffleSplit,
+)
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.svm import LinearSVC, LinearSVR
 
@@ -40,6 +36,16 @@ baseline_details = {
         "data_file": None,
         "data_file_pattern": None,
         "plot_label": "Connectome",
+    },
+    "avgr2": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\n average R2",
+    },
+    "r2map": {
+        "data_file": None,
+        "data_file_pattern": "r2map",
+        "plot_label": "t+1\nR2 map",
     },
     "conv_avg": {
         "data_file": None,
@@ -61,16 +67,6 @@ baseline_details = {
         "data_file_pattern": "1dconv",
         "plot_label": "Conv layers \n 1D convolution",
     },
-    "avgr2": {
-        "data_file": None,
-        "data_file_pattern": "r2map",
-        "plot_label": "t+1\n average R2",
-    },
-    "r2map": {
-        "data_file": None,
-        "data_file_pattern": "r2map",
-        "plot_label": "t+1\nR2 map",
-    },
 }
 
 log = logging.getLogger(__name__)
@@ -85,40 +81,98 @@ def train(dataset, tng, tst, clf, clf_name):
     }
 
 
+LABEL_DIR = Path(__file__).parents[1] / "outputs" / "sample_for_pretraining"
+
+
 @hydra.main(version_base="1.3", config_path="../config", config_name="predict")
 def main(params: DictConfig) -> None:
-    from src.data.load_data import get_model_data, load_h5_data_path
+    from src.data.load_data import (
+        get_model_data,
+        load_h5_data_path,
+        load_ukbb_dset_path,
+    )
 
     # parse parameters
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     output_dir = Path(output_dir)
     log.info(f"Output data {output_dir}")
     feature_path = Path(params["feature_path"])
-    phenotype_file = Path(params["phenotype_file"])
-    convlayers_path = feature_path / "feature_convlayers.h5"
-    feature_t1_file = feature_path / f"feature_horizon-{params['horizon']}.h5"
-    test_subjects = feature_path / "test_set_connectome.txt"
+    extract_config = OmegaConf.load(feature_path / ".hydra/config.yaml")
     model_config = OmegaConf.load(
-        feature_path.parent / "model/.hydra/config.yaml"
+        Path(extract_config["model_path"]).parent / ".hydra/config.yaml"
+    )
+
+    phenotype_file = Path(model_config["data"]["phenotype_file"])
+    convlayers_path = feature_path / "feature_convlayers.h5"
+    feature_t1_file = (
+        feature_path / f"feature_horizon-{extract_config['horizon']}.h5"
     )
     params = OmegaConf.merge(model_config, params)
     log.info(params)
-
-    # load test set subject path from the training
-    with open(test_subjects, "r") as f:
-        hold_outs = f.read().splitlines()
     percentage_sample = params["percentage_sample"]
-    if percentage_sample != 100:
-        proportion = percentage_sample / 100
-        sample_select = ShuffleSplit(
-            n_splits=1,
-            train_size=proportion,
-            random_state=params["random_state"],
-        )
-        sample_index, _ = next(sample_select.split(hold_outs))
-        subj = [hold_outs[i] for i in sample_index]
+
+    if params["predict_variable"] in ["age", "sex"]:
+        sample_file = list(
+            (LABEL_DIR / f"seed-{model_config['random_state']}").glob(
+                "sample*split.json"
+            )
+        )[0]
+
+        # load test set subject path from the training
+        with open(sample_file, "r") as f:
+            hold_outs = json.load(f)[f"{model_config['data']['n_embed']}"][
+                "test"
+            ]
+
+        if percentage_sample != 100:
+            proportion = percentage_sample / 100
+            sample_select = ShuffleSplit(
+                n_splits=1,
+                train_size=proportion,
+                random_state=params["random_state"],
+            )
+            sample_index, _ = next(sample_select.split(hold_outs))
+            subj = [hold_outs[i] for i in sample_index]
+        else:
+            subj = hold_outs.copy()
     else:
-        subj = hold_outs.copy()
+        sample_file = (
+            LABEL_DIR
+            / f"seed-{model_config['random_state']}"
+            / "downstream_sample.json"
+        )
+        with open(sample_file, "r") as f:
+            hold_outs = json.load(f)["test_downstreams"][
+                params["predict_variable"]
+            ]  # these are subject ids
+        diagnosis_data = (
+            pd.read_csv(phenotype_file, sep="\t")
+            .set_index("participant_id")
+            .loc[hold_outs, :]
+        )
+
+        percentage_sample = params["percentage_sample"]
+        if percentage_sample != 100:
+            proportion = percentage_sample / 100
+            sample_select = StratifiedShuffleSplit(
+                n_splits=1,
+                train_size=proportion,
+                random_state=params["random_state"],
+            )
+            sample_index, _ = next(
+                sample_select.split(
+                    diagnosis_data.index,
+                    diagnosis_data[params["predict_variable"]],
+                )
+            )
+            subj = [diagnosis_data.index[i] for i in sample_index]
+
+        else:
+            subj = hold_outs.copy()
+        subj = [f"sub-{s}" for s in subj]
+        subj = load_ukbb_dset_path(
+            subj, params["data"]["atlas_desc"], params["data"]["segment"]
+        )
 
     log.info(
         f"Downstream prediction on {len(subj)}, "
@@ -143,31 +197,29 @@ def main(params: DictConfig) -> None:
                 C=100,
                 penalty="l2",
                 class_weight="balanced",
-                max_iter=1000000,
+                max_iter=10000,
                 random_state=params["random_state"],
             ),
             "LogisticR": LogisticRegression(
                 penalty="l2",
                 class_weight="balanced",
-                max_iter=100000,
+                max_iter=1000,
                 random_state=params["random_state"],
                 n_jobs=-1,
             ),
             "Ridge": RidgeClassifier(
                 class_weight="balanced",
                 random_state=params["random_state"],
-                max_iter=100000,
+                max_iter=1000,
             ),
         }
     elif params["predict_variable_type"] == "numerical":  # need to fix this
         clf_options = {
             "SVM": LinearSVR(
-                C=100, max_iter=1000000, random_state=params["random_state"]
+                C=100, max_iter=10000, random_state=params["random_state"]
             ),
             "LinearR": LinearRegression(n_jobs=-1),
-            "Ridge": Ridge(
-                random_state=params["random_state"], max_iter=100000
-            ),
+            "Ridge": Ridge(random_state=params["random_state"], max_iter=1000),
         }
     else:
         raise ValueError(
@@ -180,11 +232,6 @@ def main(params: DictConfig) -> None:
         log.info(f"Load data {baseline_details[measure]['data_file']}")
         if measure == "connectome":
             dset_path = baseline_details[measure]["data_file_pattern"]
-        elif percentage_sample == 100:
-            dset_path = load_h5_data_path(
-                baseline_details[measure]["data_file"],
-                baseline_details[measure]["data_file_pattern"],
-            )
         else:
             dset_path = []
             for connectome_path in subj:

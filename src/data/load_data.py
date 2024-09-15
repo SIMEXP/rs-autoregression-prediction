@@ -316,7 +316,6 @@ def get_model_data(
     phenotype_file: Union[Path, str],
     measure: str = "connectome",
     label: str = "sex",
-    pooling_target: str = "max",
     log: logging = logging,
 ) -> Dict[str, np.ndarray]:
     """Get the data from pretrained model for the downstrean task.
@@ -374,11 +373,10 @@ def get_model_data(
         if subject in participant_id:
             df_phenotype.loc[subject, "path"] = p
     selected_path = df_phenotype.loc[participant_id, "path"].values.tolist()
-    log.info(len(selected_path))
     data = load_data(data_file, selected_path, dtype="data")
 
     if "r2" in measure:
-        data = np.concatenate(data).squeeze()
+        data = np.array(data)[:, 0, :]
         if measure == "avgr2":
             data = data.mean(axis=1).reshape(-1, 1)
         data = StandardScaler().fit_transform(data)

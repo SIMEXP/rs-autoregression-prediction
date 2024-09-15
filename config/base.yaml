@@ -1,8 +1,8 @@
 ---
 defaults:
   - _self_
-  - hydra: default
+  - hydra: make_data
 
 verbose: 2
-random_state: 42
+random_state: 1
 return_type: float

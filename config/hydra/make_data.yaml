@@ -8,7 +8,7 @@ run:
   dir: ${oc.env:SCRATCH}/autoreg/${hydra.job.name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
 sweep:
   dir: ${oc.env:SCRATCH}/autoreg/${hydra.job.name}/multiruns/${now:%Y-%m-%d}_${now:%H-%M-%S}
-  subdir: seed-${random_state}_n-${data.n_sample}
+  subdir: seed-${random_state}
 
 job_logging:
   handlers:
@@ -19,10 +19,10 @@ job_logging:
 launcher:
   submitit_folder: ${hydra.sweep.dir}/.submitit/%j
   timeout_min: 600
-  cpus_per_task: 4
-  gpus_per_node: 1
+  cpus_per_task: 1
+  gpus_per_node:
   tasks_per_node: 1
-  mem_gb: 4
+  mem_gb: 2
   nodes: 1
   name: ${hydra.job.name}
   stderr_to_stdout: false

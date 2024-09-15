@@ -1,0 +1,15 @@
+---
+defaults:
+  - _self_
+  - experiment
+
+model: Chebnet
+FC_type: nonshared_uni
+use_bn: true
+dropout: 0
+bn_momentum: 0.1
+layers:
+  - {F: 8, K: 3, aggr: add}
+  - {F: 8, K: 3, aggr: add}
+  - {F: 8, K: 3, aggr: add}
+  - {M: 1}
