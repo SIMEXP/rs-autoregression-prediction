@@ -111,11 +111,10 @@ def main():
                     with h5py.File(path_h5, "a") as new_f:
                         new_f.create_dataset(dset_name, data=v)
 
-                    for i in range(4):
-                        seg_dset_name = dset_name.replace(
-                            "timeseries", f"seg-{i+1}_timeseries"
-                        )
-                        with h5py.File(path_h5, "a") as new_f:
+                        for i in range(4):
+                            seg_dset_name = dset_name.replace(
+                                "timeseries", f"seg-{i+1}_timeseries"
+                            )
                             new_f.create_dataset(
                                 seg_dset_name, data=v[i::4, :]
                             )
