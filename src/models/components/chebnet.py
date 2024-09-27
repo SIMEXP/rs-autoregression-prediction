@@ -1,5 +1,6 @@
 from typing import List, Tuple
 
+import h5py
 import numpy as np
 import torch
 import torch.nn as nn
@@ -38,7 +39,8 @@ class Chebnet(nn.Module):
         self,
         n_emb: int,
         seq_len: int,
-        edge_index: torch.Tensor,
+        connectome_file: str,
+        connectome_threshold: float,
         FK: str,
         M: str,
         FC_type: str,
@@ -49,7 +51,9 @@ class Chebnet(nn.Module):
         super(Chebnet, self).__init__()
 
         self.FC_type = FC_type
-        self.edge_index = edge_index
+        self.edge_index = get_edge_index_threshold(
+            connectome_file, connectome_threshold
+        )
 
         FK = string_to_list(FK)
         F = FK[::2]
@@ -150,18 +154,21 @@ class NonsharedFC(nn.Module):
 
 
 def get_edge_index_threshold(
-    connectome: np.ndarray, threshold: float = 0.9
+    connectome_file: str, threshold: float = 0.9
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Get the edge index of the graph from thresholded functional connectome.
 
     Args:
-        connectome (np.ndarray): functional connectome
+        connectome_file (str): path to the data h5 file
         threshold (float): threshold value for the connectome (default=0.9)
 
     Returns:
         edge_index (tuple of np.ndarrays):
             edge index of the graph in Coordinate Format (COO)
     """
+
+    with h5py.File(connectome_file, "r") as h5file:
+        connectome = h5file["connectome"][:]
     thres_index = int(connectome.shape[0] * connectome.shape[1] * threshold)
     thres_value = np.sort(connectome.flatten())[thres_index]
     adj_mat = connectome * (connectome >= thres_value)
@@ -169,7 +176,7 @@ def get_edge_index_threshold(
     del thres_value
     edge_index = np.nonzero(adj_mat)
     del adj_mat
-    return edge_index
+    return torch.tensor(edge_index)
 
 
 def string_to_list(L: str) -> List[int]:

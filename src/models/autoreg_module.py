@@ -29,11 +29,14 @@ class GraphAutoRegModule(LightningModule):
         self.criterion = torch.nn.MSELoss()
 
         # metric objects for calculating and averaging accuracy across batches
-        self.train_r2 = R2Score(
-            num_outputs=n_regions, multioutput="raw_values"
-        )
-        self.val_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
-        self.test_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
+        # self.train_r2 = R2Score(
+        #     num_outputs=n_regions, multioutput="raw_values"
+        # )
+        # self.val_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
+        # self.test_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
+        self.train_r2 = R2Score(num_outputs=n_regions)
+        self.val_r2 = R2Score(num_outputs=n_regions)
+        self.test_r2 = R2Score(num_outputs=n_regions)
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -47,17 +50,13 @@ class GraphAutoRegModule(LightningModule):
         """Perform a forward pass through the model `self.net`."""
         return self.net(x)
 
-    def backward(self, loss: torch.Tensor, *args, **kwargs) -> None:
-        loss.backward()
-        return super().backward(loss, *args, **kwargs)
-
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
         # by default lightning executes validation step sanity checks before training starts,
         # so it's worth to make sure validation metrics don't store results from these checks
         self.val_loss.reset()
-        self.val_acc.reset()
-        self.val_acc_best.reset()
+        self.val_r2.reset()
+        self.val_r2_best.reset()
 
     def model_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor]
@@ -151,34 +150,37 @@ class GraphAutoRegModule(LightningModule):
             prog_bar=True,
         )
 
-    def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> None:
-        """Perform a single test step on a batch of data from the test set.
+    def test_step(self) -> None:
+        pass
 
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target
-            labels.
-        :param batch_idx: The index of the current batch.
-        """
-        loss, preds, targets = self.model_step(batch)
+    # def test_step(
+    #     self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    # ) -> None:
+    #     """Perform a single test step on a batch of data from the test set.
 
-        # update and log metrics
-        self.test_loss(loss)
-        self.test_r2(preds, targets)
-        self.log(
-            "test/loss",
-            self.test_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        self.log(
-            "test/r2",
-            self.test_r2,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
+    #     :param batch: A batch of data (a tuple) containing the input tensor of images and target
+    #         labels.
+    #     :param batch_idx: The index of the current batch.
+    #     """
+    #     loss, preds, targets = self.model_step(batch)
+
+    #     # update and log metrics
+    #     self.test_loss(loss)
+    #     self.test_r2(preds, targets)
+    #     self.log(
+    #         "test/loss",
+    #         self.test_loss,
+    #         on_step=False,
+    #         on_epoch=True,
+    #         prog_bar=True,
+    #     )
+    #     self.log(
+    #         "test/r2",
+    #         self.test_r2,
+    #         on_step=False,
+    #         on_epoch=True,
+    #         prog_bar=True,
+    #     )
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""

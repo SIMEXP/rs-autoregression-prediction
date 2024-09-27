@@ -67,7 +67,7 @@ class UKBBDataModule(LightningDataModule):
             Path(self.hparams.data_dir)
             / f"downstream_sample_seed-{self.hparams.random_state}.json"
         )
-        if not path_sample_split.exists:
+        if not path_sample_split.exists():
             phenotype_meta = self.hparams.phenotype_file.replace(
                 ".tsv", ".json"
             )
@@ -85,6 +85,13 @@ class UKBBDataModule(LightningDataModule):
         # load the existing sample for generating sequences
         with open(path_sample_split, "r") as f:
             sample = json.load(f)
+        # h5 path
+        out_path = (
+            Path(self.hparams.data_dir)
+            / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
+        )
+        if out_path.exists():
+            return
 
         conn_dset_paths = load_ukbb_dset_path(
             participant_id=sample["train"],
@@ -114,7 +121,7 @@ class UKBBDataModule(LightningDataModule):
                     atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
                     segment=self.hparams.timeseries_segment,
                 )
-                print(f"Creating labels for {len(dset_paths)} segments.")
+                log.info(f"Creating labels for {len(dset_paths)} segments.")
                 for dset_path in tqdm(dset_paths):
                     data = load_data(self.hparams.connectome_file, dset_path)[
                         0
@@ -175,23 +182,39 @@ class UKBBDataModule(LightningDataModule):
 
     def setup(self, stage: str) -> None:
         """Set up the data for training, validation, and testing."""
-        if stage == "fit" or stage is None:
-            self.time_sequence_file = str(
-                Path(self.hparams.data_dir)
-                / f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}_seed-{self.hparams.random_state}_data.h5"
-            )
-            time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
+        self.time_sequence_file = str(
+            Path(self.hparams.data_dir)
+            / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
+        )
+        time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
+        if stage is None:
             self.connectome = time_sequence_h5["connectome"][:]
+        if stage == "fit":
+            log.info(
+                f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
+            )
             if self.hparams.proportion_sample < 1.0:
                 tng_length = time_sequence_h5["train"]["input"].shape[0]
                 tng_index = list(
                     range(int(tng_length * self.hparams.proportion_sample))
                 )
+                log.info(f"Number of sample: {len(tng_index)}")
                 self.data_train = Subset(
                     TimeSeriesDataset(time_sequence_h5, "train"), tng_index
                 )
+                val_length = time_sequence_h5["validation"]["input"].shape[0]
+                val_index = list(
+                    range(int(val_length * self.hparams.proportion_sample))
+                )
+                self.data_val = Subset(
+                    TimeSeriesDataset(time_sequence_h5, "validation"),
+                    val_index,
+                )
             else:
                 self.data_train = TimeSeriesDataset(time_sequence_h5, "train")
+                self.data_val = TimeSeriesDataset(
+                    time_sequence_h5, "validation"
+                )
 
         if stage == "validate":
             time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
@@ -231,6 +254,30 @@ class UKBBDataModule(LightningDataModule):
             drop_last=True,
             shuffle=False,
         )
+
+    def teardown(self, stage: Optional[str] = None) -> None:
+        """Lightning hook for cleaning up after `trainer.fit()`, `trainer.validate()`,
+        `trainer.test()`, and `trainer.predict()`.
+
+        :param stage: The stage being torn down. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
+            Defaults to ``None``.
+        """
+        pass
+
+    def state_dict(self) -> Dict[Any, Any]:
+        """Called when saving a checkpoint. Implement to generate and save the datamodule state.
+
+        :return: A dictionary containing the datamodule state that you want to save.
+        """
+        return {}
+
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        """Called when loading a checkpoint. Implement to reload datamodule state given datamodule
+        `state_dict()`.
+
+        :param state_dict: The datamodule state returned by `self.state_dict()`.
+        """
+        pass
 
 
 def load_ukbb_dset_path(

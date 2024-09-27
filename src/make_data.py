@@ -36,6 +36,7 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
     datamodule.prepare_data()
+    log.info("Finishing...")
 
 
 if __name__ == "__main__":

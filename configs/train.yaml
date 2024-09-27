@@ -2,9 +2,27 @@
 defaults:
   - _self_
   - data: ukbb
-  - hydra: default
+  - model: chebnet
+  - callbacks: default
+  - logger:
+  - trainer: default
   - paths: default
   - verbose: default
+  - hydra: default
+
+  # # experiment configs allow for version control of specific hyperparameters
+  # # e.g. best hyperparameters for given model and datamodule
+  # - experiment: null
+
+  # # config for hyperparameter optimization
+  # - hparams_search: null
+
+  # # optional local config for machine/user specific settings
+  # # it's optional since it doesn't need to exist and is excluded from version control
+  # - optional local: default
+
+  # debugging config (enable through command line, e.g. `python train.py debug=default)
+  - debug:
 
 # task name, determines output directory path
 task_name: train

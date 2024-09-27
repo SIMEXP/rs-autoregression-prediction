@@ -142,10 +142,9 @@ class TimeSeriesDataset(object):
 
     def __getitem__(self, index):
         # read the data
-        X = self.data[self.set_type]["input"][index, :, :]
-        Y = self.data[self.set_type]["label"][index, :]
-        sample = {
-            "input": torch.tensor(X, dtype=torch.float32),
-            "label": torch.tensor(Y, dtype=torch.float32),
-        }
-        return sample
+        input_seq = self.data[self.set_type]["input"][index, :, :]
+        label = self.data[self.set_type]["label"][index, :]
+        # transform to tensors
+        input_seq = torch.tensor(input_seq, dtype=torch.float32)
+        label = torch.tensor(label, dtype=torch.float32)
+        return input_seq, label
