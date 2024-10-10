@@ -8,11 +8,12 @@
 task_name: debug
 
 # disable callbacks and loggers during debugging
-# callbacks: null
-# logger: null
+callbacks:
+logger:
 
-verbose:
+extras:
   ignore_warnings: false
+  enforce_tags: false
 
 # sets level of all command line loggers to 'DEBUG'
 # https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
@@ -31,6 +32,6 @@ trainer:
   detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
 
 data:
+  proportion_sample: 0.01
   num_workers: 0 # debuggers don't like multiprocessing
   pin_memory: false # disable gpu memory pin
-  proportion_sample: 0.001

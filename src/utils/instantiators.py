@@ -1,12 +1,12 @@
-import logging
 from typing import List
 
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
+from src.utils import pylogger
 
-log = logging.getLogger(__name__)
+log = pylogger.RankedLogger(__name__, rank_zero_only=True)
 
 
 def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:

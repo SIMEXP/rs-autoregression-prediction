@@ -129,7 +129,7 @@ def load_data(
         return data_list
 
 
-class TimeSeriesDataset(object):
+class TimeSeriesDataset(torch.utils.data.Dataset):
     """Simple dataset for pytorch training loop"""
 
     def __init__(self, time_sequence_h5, set_type="train"):
@@ -137,14 +137,16 @@ class TimeSeriesDataset(object):
         self.set_type = set_type
 
     def __len__(self):
-        length = self[self.set_type]["label"].shape[0]
+        length = self.data[self.set_type]["label"].shape[0]
         return length
 
     def __getitem__(self, index):
         # read the data
-        input_seq = self.data[self.set_type]["input"][index, :, :]
-        label = self.data[self.set_type]["label"][index, :]
+        h5_input_seq = self.data[self.set_type]["input"][index, :, :]
+        h5_label = self.data[self.set_type]["label"][index, :]
         # transform to tensors
-        input_seq = torch.tensor(input_seq, dtype=torch.float32)
-        label = torch.tensor(label, dtype=torch.float32)
+        input_seq = torch.tensor(h5_input_seq, dtype=torch.float32)
+        del h5_input_seq
+        label = torch.tensor(h5_label, dtype=torch.float32)
+        del h5_label
         return input_seq, label

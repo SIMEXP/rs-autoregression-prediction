@@ -9,7 +9,7 @@ timeseries_segment: 0
 timeseries_window_stride_lag: [16, 1, 1]
 train_val_test_split: [0.6, 0.2, 0.2]
 class_balance_confounds: [site, sex, age, mean_fd_raw, proportion_kept]
-batch_size: 64
+batch_size: 512
 num_workers: 0
 pin_memory: false
 random_state: ${seed}

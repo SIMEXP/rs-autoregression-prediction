@@ -1,12 +1,24 @@
+# --------- pytorch --------- #
 pyg_lib
 torch-scatter
 torch-sparse
 torch-cluster
 torch-spline-conv
 torch-geometric
+torchinfo
+# --------- hydra --------- #
+hydra-core
+hydra-colorlog
+hydra-optuna-sweeper
+
+# --------- loggers --------- #
+wandb
+neptune-client
+
+# --------- others --------- #
+rootutils
+rich
 h5py
 pandas
 seaborn
-hydra-core
-torchinfo
-wandb
+nilearn

@@ -1,6 +1,0 @@
----
-# disable python warnings if they annoy you
-ignore_warnings: false
-
-# verbose level, set tp 0 to disable
-verbose_level: 3

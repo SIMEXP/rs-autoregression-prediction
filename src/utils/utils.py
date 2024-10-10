@@ -1,32 +1,46 @@
-import logging
-import os
 import warnings
 from importlib.util import find_spec
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from omegaconf import DictConfig
+from src.utils import pylogger, rich_utils
 
-log = logging.getLogger(__name__)
+log = pylogger.RankedLogger(__name__, rank_zero_only=True)
 
 
-def setup_logging(cfg: DictConfig) -> logging.Logger:
-    log = logging.getLogger(cfg.task_name)
+def extras(cfg: DictConfig) -> None:
+    """Applies optional utilities before the task is started.
 
-    in_job_array: str = "SLURM_ARRAY_TASK_ID" in os.environ
-    if in_job_array:
-        array_task_id: int = int(os.environ["SLURM_ARRAY_TASK_ID"])
-        array_task_count: int = int(os.environ["SLURM_ARRAY_TASK_COUNT"])
+    Utilities:
+        - Ignoring python warnings
+        - Setting tags from command line
+        - Rich config printing
+
+    :param cfg: A DictConfig object containing the config tree.
+    """
+    # return if no `extras` config
+    if not cfg.get("extras"):
+        log.warning("Extras config not found! <cfg.extras=null>")
+        return
+
+    # disable python warnings
+    if cfg.extras.get("ignore_warnings"):
         log.info(
-            f"This job is at index {array_task_id} in a job array of "
-            f"size {array_task_count}"
-        )
-
-    if cfg.verbose.get("ignore_warnings"):
-        log.info(
-            "Disabling python warnings! <cfg.verbose.ignore_warnings=True>"
+            "Disabling python warnings! <cfg.extras.ignore_warnings=True>"
         )
         warnings.filterwarnings("ignore")
-    return log
+
+    # prompt user to input tags from command line if none are provided in the config
+    if cfg.extras.get("enforce_tags"):
+        log.info("Enforcing tags! <cfg.extras.enforce_tags=True>")
+        rich_utils.enforce_tags(cfg, save_to_file=True)
+
+    # pretty print config tree using Rich library
+    if cfg.extras.get("print_config"):
+        log.info(
+            "Printing config tree with Rich! <cfg.extras.print_config=True>"
+        )
+        rich_utils.print_config_tree(cfg, resolve=True, save_to_file=True)
 
 
 def task_wrapper(task_func: Callable) -> Callable:

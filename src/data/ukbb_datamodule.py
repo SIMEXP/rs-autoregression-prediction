@@ -187,49 +187,49 @@ class UKBBDataModule(LightningDataModule):
             / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
         )
         time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
-        if stage is None:
-            self.connectome = time_sequence_h5["connectome"][:]
-        if stage == "fit":
-            log.info(
-                f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
+        self.connectome = time_sequence_h5["connectome"][:]
+        log.info(
+            f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
+        )
+        if self.hparams.proportion_sample < 1.0:
+            tng_length = time_sequence_h5["train"]["input"].shape[0]
+            tng_index = list(
+                range(int(tng_length * self.hparams.proportion_sample))
             )
-            if self.hparams.proportion_sample < 1.0:
-                tng_length = time_sequence_h5["train"]["input"].shape[0]
-                tng_index = list(
-                    range(int(tng_length * self.hparams.proportion_sample))
-                )
-                log.info(f"Number of sample: {len(tng_index)}")
-                self.data_train = Subset(
-                    TimeSeriesDataset(time_sequence_h5, "train"), tng_index
-                )
-                val_length = time_sequence_h5["validation"]["input"].shape[0]
-                val_index = list(
-                    range(int(val_length * self.hparams.proportion_sample))
-                )
-                self.data_val = Subset(
-                    TimeSeriesDataset(time_sequence_h5, "validation"),
-                    val_index,
-                )
-            else:
-                self.data_train = TimeSeriesDataset(time_sequence_h5, "train")
-                self.data_val = TimeSeriesDataset(
-                    time_sequence_h5, "validation"
-                )
+            log.info(f"Number of sample: {len(tng_index)}")
+            self.data_train = Subset(
+                TimeSeriesDataset(time_sequence_h5, set_type="train"),
+                tng_index,
+            )
+            val_length = time_sequence_h5["validation"]["input"].shape[0]
+            val_index = list(
+                range(int(val_length * self.hparams.proportion_sample))
+            )
+            self.data_val = Subset(
+                TimeSeriesDataset(time_sequence_h5, set_type="validation"),
+                val_index,
+            )
+        else:
+            self.data_train = TimeSeriesDataset(
+                time_sequence_h5, set_type="train"
+            )
+            self.data_val = TimeSeriesDataset(
+                time_sequence_h5, set_type="validation"
+            )
 
         if stage == "validate":
-            time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
             if self.hparams.proportion_sample < 1.0:
                 val_length = time_sequence_h5["validation"]["input"].shape[0]
                 val_index = list(
                     range(int(val_length * self.hparams.proportion_sample))
                 )
                 self.data_val = Subset(
-                    TimeSeriesDataset(time_sequence_h5, "validation"),
+                    TimeSeriesDataset(time_sequence_h5, set_type="validation"),
                     val_index,
                 )
             else:
                 self.data_val = TimeSeriesDataset(
-                    time_sequence_h5, "validation"
+                    time_sequence_h5, set_type="validation"
                 )
 
         if stage == "test":
