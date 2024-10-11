@@ -102,6 +102,7 @@ class Chebnet(nn.Module):
         for layer in self.layers:
             if "ChebConv" in layer.__str__():
                 # hack to make sure the connectome is the same device
+                # this hack will break quick compile of th model
                 x = layer(x, self.edge_index.to(x.device))
             else:
                 x = layer(x)

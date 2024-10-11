@@ -28,4 +28,4 @@ logger:
     prefix: ${tags[0]}
 
 model:
-  compile: true
+  compile: false

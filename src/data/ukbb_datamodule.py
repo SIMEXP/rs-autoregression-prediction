@@ -34,7 +34,6 @@ class UKBBDataModule(LightningDataModule):
         phenotype_file: str,
         data_dir: str = "data/",
         atlas: Tuple[str, int] = ("MIST", 197),
-        threshold: float = 0.9,
         proportion_sample: float = 1.0,
         timeseries_segment: int = -1,
         timeseries_window_stride_lag: Tuple[int, int, int] = (16, 1, 1),
@@ -193,9 +192,9 @@ class UKBBDataModule(LightningDataModule):
         )
         time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
         self.connectome = time_sequence_h5["connectome"][:]
-        self.edge_index = get_edge_index_threshold(
-            self.connectome, threshold=self.hparams.threshold
-        )
+        # self.edge_index = get_edge_index_threshold(
+        #     self.connectome, threshold=self.hparams.threshold
+        # )
         log.info(
             f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
         )
