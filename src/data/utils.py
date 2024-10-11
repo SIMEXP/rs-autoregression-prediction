@@ -132,11 +132,8 @@ def load_data(
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Simple dataset for pytorch training loop"""
 
-    def __init__(
-        self, time_sequence_h5, edge_index, set_type="train", transform=None
-    ):
+    def __init__(self, time_sequence_h5, set_type="train", transform=None):
         self.data = time_sequence_h5
-        self.edge_index = edge_index
         self.set_type = set_type
         self.transform = transform
 
@@ -153,11 +150,9 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
         if self.transform:
             input_seq = self.transform(h5_input_seq)
             label = self.transform(h5_label)
-            edge_index = self.transform(self.edge_index)
         else:
             input_seq = torch.from_numpy(h5_input_seq)
             label = torch.from_numpy(h5_label)
-            edge_index = torch.tensor(self.edge_index)
         del h5_label
         del h5_input_seq
-        return input_seq, label, edge_index
+        return input_seq, label

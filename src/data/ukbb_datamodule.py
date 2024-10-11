@@ -208,7 +208,6 @@ class UKBBDataModule(LightningDataModule):
             self.data_train = Subset(
                 TimeSeriesDataset(
                     time_sequence_h5,
-                    edge_index=self.edge_index,
                     set_type="train",
                 ),
                 tng_index,
@@ -220,18 +219,16 @@ class UKBBDataModule(LightningDataModule):
             self.data_val = Subset(
                 TimeSeriesDataset(
                     time_sequence_h5,
-                    edge_index=self.edge_index,
                     set_type="validation",
                 ),
                 val_index,
             )
         else:
             self.data_train = TimeSeriesDataset(
-                time_sequence_h5, edge_index=self.edge_index, set_type="train"
+                time_sequence_h5, set_type="train"
             )
             self.data_val = TimeSeriesDataset(
                 time_sequence_h5,
-                edge_index=self.edge_index,
                 set_type="validation",
             )
 
@@ -244,7 +241,6 @@ class UKBBDataModule(LightningDataModule):
                 self.data_val = Subset(
                     TimeSeriesDataset(
                         time_sequence_h5,
-                        edge_index=self.edge_index,
                         set_type="validation",
                     ),
                     val_index,
@@ -252,7 +248,6 @@ class UKBBDataModule(LightningDataModule):
             else:
                 self.data_val = TimeSeriesDataset(
                     time_sequence_h5,
-                    edge_index=self.edge_index,
                     set_type="validation",
                 )
 
