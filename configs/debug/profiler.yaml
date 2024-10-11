@@ -1,4 +1,3 @@
----
 # @package _global_
 
 # runs with execution time profiling
@@ -8,6 +7,6 @@ defaults:
 
 trainer:
   max_epochs: 1
-  profiler: simple
+  profiler: "simple"
   # profiler: "advanced"
   # profiler: "pytorch"

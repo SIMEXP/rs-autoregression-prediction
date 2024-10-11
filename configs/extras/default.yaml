@@ -1,12 +1,8 @@
----
 # disable python warnings if they annoy you
-ignore_warnings: false
+ignore_warnings: False
 
 # ask user for tags if none are provided in the config
-enforce_tags: true
+enforce_tags: True
 
 # pretty print config tree at the start of the run using Rich library
-print_config: true
-
-# verbose level, set tp 0 to disable
-verbose_level: 3
+print_config: True

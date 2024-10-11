@@ -1,4 +1,3 @@
----
 # @package _global_
 
 # specify here default configuration
@@ -8,7 +7,7 @@ defaults:
   - data: ukbb
   - model: chebnet
   - callbacks: default
-  - logger:      # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
+  - logger: null # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default
   - paths: default
   - extras: default
@@ -16,35 +15,35 @@ defaults:
 
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
-  - experiment:
+  - experiment: null
 
   # config for hyperparameter optimization
-  - hparams_search:
+  - hparams_search: null
 
   # optional local config for machine/user specific settings
   # it's optional since it doesn't need to exist and is excluded from version control
   - optional local: default
 
   # debugging config (enable through command line, e.g. `python train.py debug=default)
-  - debug:
+  - debug: null
 
 # task name, determines output directory path
-task_name: train
+task_name: "train"
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs
 # overwrite from command line with `python train.py tags="[first_tag, second_tag]"`
-tags: [dev]
+tags: ["dev"]
 
 # set False to skip model training
-train: true
+train: True
 
 # evaluate on test set, using best model weights achieved during training
 # lightning chooses best weights based on the metric specified in checkpoint callback
-test: false
+test: True
 
 # simply provide checkpoint path to resume training
-ckpt_path:
+ckpt_path: null
 
 # seed for random number generators in pytorch, numpy and python.random
-seed:
+seed: null

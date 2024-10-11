@@ -1,4 +1,3 @@
----
 # https://neptune.ai
 
 neptune:
@@ -6,5 +5,5 @@ neptune:
   api_key: ${oc.env:NEPTUNE_API_TOKEN} # api key is loaded from environment variable
   project: username/lightning-hydra-template
   # name: ""
-  log_model_checkpoints: true
-  prefix: ''
+  log_model_checkpoints: True
+  prefix: ""

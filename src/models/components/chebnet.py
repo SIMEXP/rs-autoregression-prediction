@@ -51,9 +51,9 @@ class Chebnet(nn.Module):
         super(Chebnet, self).__init__()
 
         self.FC_type = FC_type
-        self.edge_index = get_edge_index_threshold(
-            connectome_file, connectome_threshold
-        )
+        self.edge_index = torch.tensor(
+            get_edge_index_threshold(connectome_file, connectome_threshold)
+        )  # for reasons this is always on cpu
 
         FK = string_to_list(FK)
         F = FK[::2]
@@ -101,7 +101,8 @@ class Chebnet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
             if "ChebConv" in layer.__str__():
-                x = layer(x, self.edge_index)
+                # hack to make sure the connectome is the same device
+                x = layer(x, self.edge_index.to(x.device))
             else:
                 x = layer(x)
         return x.view((x.shape[0], x.shape[1]))
@@ -176,7 +177,7 @@ def get_edge_index_threshold(
     del thres_value
     edge_index = np.nonzero(adj_mat)
     del adj_mat
-    return torch.tensor(edge_index)
+    return edge_index
 
 
 def string_to_list(L: str) -> List[int]:

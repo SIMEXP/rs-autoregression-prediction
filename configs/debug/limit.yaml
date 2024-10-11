@@ -1,4 +1,3 @@
----
 # @package _global_
 
 # uses only 1% of the training data and 5% of validation/test data

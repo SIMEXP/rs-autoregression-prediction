@@ -1,4 +1,3 @@
----
 # https://mlflow.org
 
 mlflow:
@@ -6,8 +5,8 @@ mlflow:
   # experiment_name: ""
   # run_name: ""
   tracking_uri: ${paths.log_dir}/mlflow/mlruns # run `mlflow ui` command inside the `logs/mlflow/` dir to open the UI
-  tags:
+  tags: null
   # save_dir: "./mlruns"
-  prefix: ''
-  artifact_location:
+  prefix: ""
+  artifact_location: null
   # run_id: ""

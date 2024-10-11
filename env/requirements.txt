@@ -6,14 +6,14 @@ torch-cluster
 torch-spline-conv
 torch-geometric
 torchinfo
+
 # --------- hydra --------- #
-hydra-core
-hydra-colorlog
-hydra-optuna-sweeper
+hydra-core==1.3.2
+hydra-colorlog==1.2.0
+hydra-optuna-sweeper==1.2.0
 
 # --------- loggers --------- #
 wandb
-neptune-client
 
 # --------- others --------- #
 rootutils
@@ -22,3 +22,4 @@ h5py
 pandas
 seaborn
 nilearn
+SQLAlchemy==1.4.46
