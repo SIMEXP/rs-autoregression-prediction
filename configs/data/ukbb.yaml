@@ -2,14 +2,14 @@
 _target_: src.data.ukbb_datamodule.UKBBDataModule
 connectome_file: inputs/connectomes/ukbb_libral_scrub_20240716_connectome.h5
 phenotype_file: inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.tsv
-data_dir: inputs/data/
+data_dir: ${paths.data_dir}
 atlas: [MIST, 197]
 proportion_sample: 1.0
 timeseries_segment: 0
 timeseries_window_stride_lag: [16, 1, 1]
 train_val_test_split: [0.6, 0.2, 0.2]
 class_balance_confounds: [site, sex, age, mean_fd_raw, proportion_kept]
-batch_size: 512
+batch_size: 128
 num_workers: 0
 pin_memory: false
 random_state: ${seed}

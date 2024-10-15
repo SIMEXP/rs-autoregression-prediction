@@ -3,13 +3,16 @@ _target_: src.models.autoreg_module.GraphAutoRegModule
 
 n_regions: ${data.atlas[1]}
 
+edge_index:
+  _target_: src.models.components.chebnet.get_edge_index_threshold
+  time_sequence_file: ${paths.data_dir}/atlas-${data.atlas[0]}${data.atlas[1]}_windowsize-${data.timeseries_window_stride_lag[0]}_seed-${seed}_data.h5
+  connectome_threshold: 0.7
+
 net:
   _target_: src.models.components.chebnet.Chebnet
   n_emb: ${data.atlas[1]}
   seq_len: ${data.timeseries_window_stride_lag[0]}
-  connectome_file: ${paths.data_dir}/atlas-${data.atlas[0]}${data.atlas[1]}_windowsize-${data.timeseries_window_stride_lag[0]}_seed-${seed}_data.h5
-  connectome_threshold: 0.9
-  FK: 8,3,8,3,8,3
+  FK: 16,6,16,6,8,3,8,3,8,3,4,2
   M: 8,1
   FC_type: nonshared_uni
   aggrs: add
@@ -19,7 +22,7 @@ net:
 optimizer:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0.0
 
 scheduler:
@@ -27,7 +30,7 @@ scheduler:
   _partial_: true
   mode: min
   factor: 0.1
-  patience: 10
+  patience: 4
 
 # compile model for faster training with pytorch 2.0
 compile: false

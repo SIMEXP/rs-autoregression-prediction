@@ -1,3 +1,4 @@
+import os
 import warnings
 from importlib.util import find_spec
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -12,6 +13,7 @@ def extras(cfg: DictConfig) -> None:
     """Applies optional utilities before the task is started.
 
     Utilities:
+        - update paths based on environment
         - Ignoring python warnings
         - Setting tags from command line
         - Rich config printing
@@ -22,6 +24,14 @@ def extras(cfg: DictConfig) -> None:
     if not cfg.get("extras"):
         log.warning("Extras config not found! <cfg.extras=null>")
         return
+
+    # data is copied to slurm tmp dir
+    if (
+        "SLURM_JOB_ID" in os.environ
+        and os.environ["SLURM_JOB_NAME"] != "interactive"
+    ):
+        log.info("Slrum job. Use SLRUM_TMP_DIR as data dir")
+        cfg.paths.data_dir = f'{os.environ["SLURM_TMPDIR"]}'
 
     # disable python warnings
     if cfg.extras.get("ignore_warnings"):

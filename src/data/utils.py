@@ -146,13 +146,12 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
         h5_input_seq = self.data[self.set_type]["input"][index, :, :]
         h5_label = self.data[self.set_type]["label"][index, :]
         # transform to tensors
-
         if self.transform:
             input_seq = self.transform(h5_input_seq)
             label = self.transform(h5_label)
         else:
-            input_seq = torch.from_numpy(h5_input_seq)
-            label = torch.from_numpy(h5_label)
+            input_seq = torch.tensor(h5_input_seq, dtype=torch.float32)
+            label = torch.tensor(h5_label, dtype=torch.float32)
         del h5_label
         del h5_input_seq
         return input_seq, label

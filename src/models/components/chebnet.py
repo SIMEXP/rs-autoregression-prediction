@@ -39,8 +39,6 @@ class Chebnet(nn.Module):
         self,
         n_emb: int,
         seq_len: int,
-        connectome_file: str,
-        connectome_threshold: float,
         FK: str,
         M: str,
         FC_type: str,
@@ -51,10 +49,6 @@ class Chebnet(nn.Module):
         super(Chebnet, self).__init__()
 
         self.FC_type = FC_type
-        self.edge_index = torch.tensor(
-            get_edge_index_threshold(connectome_file, connectome_threshold)
-        )  # for reasons this is always on cpu
-
         FK = string_to_list(FK)
         F = FK[::2]
         K = FK[1::2]
@@ -98,19 +92,21 @@ class Chebnet(nn.Module):
 
         self.layers = nn.ModuleList(layers)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
         for layer in self.layers:
             if "ChebConv" in layer.__str__():
-                # hack to make sure the connectome is the same device
-                # this hack will break quick compile of th model
-                x = layer(x, self.edge_index.to(x.device))
+                x = layer(x, edge_index)
             else:
                 x = layer(x)
         return x.view((x.shape[0], x.shape[1]))
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
+    def predict(
+        self, x: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
         self.eval()
-        return self.forward(x)
+        return self.forward(x, edge_index)
 
 
 class MultiFC(nn.Module):
@@ -156,29 +152,30 @@ class NonsharedFC(nn.Module):
 
 
 def get_edge_index_threshold(
-    connectome_file: str, threshold: float = 0.9
+    time_sequence_file: str, connectome_threshold: float = 0.9
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Get the edge index of the graph from thresholded functional connectome.
 
     Args:
-        connectome_file (str): path to the data h5 file
-        threshold (float): threshold value for the connectome (default=0.9)
+        time_sequence_file (str): path to the data h5 file
+        connectome_threshold (float): threshold value for the connectome (default=0.9)
 
     Returns:
         edge_index (tuple of np.ndarrays):
             edge index of the graph in Coordinate Format (COO)
     """
-
-    with h5py.File(connectome_file, "r") as h5file:
-        connectome = h5file["connectome"][:]
-    thres_index = int(connectome.shape[0] * connectome.shape[1] * threshold)
+    time_sequence_h5 = h5py.File(time_sequence_file, "r")
+    connectome = time_sequence_h5["connectome"][:]
+    thres_index = int(
+        connectome.shape[0] * connectome.shape[1] * connectome_threshold
+    )
     thres_value = np.sort(connectome.flatten())[thres_index]
     adj_mat = connectome * (connectome >= thres_value)
     del connectome
     del thres_value
     edge_index = np.nonzero(adj_mat)
     del adj_mat
-    return edge_index
+    return np.array(edge_index)
 
 
 def string_to_list(L: str) -> List[int]:

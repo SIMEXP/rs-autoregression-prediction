@@ -1,5 +1,6 @@
 from typing import Any, Dict, Tuple
 
+import h5py
 import numpy as np
 import torch
 from lightning import LightningModule
@@ -11,6 +12,7 @@ class GraphAutoRegModule(LightningModule):
     def __init__(
         self,
         n_regions: int,
+        edge_index: np.ndarray,
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
@@ -26,15 +28,11 @@ class GraphAutoRegModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.net = net
+        self.edge_index = torch.tensor(edge_index)
         # loss function
         self.criterion = torch.nn.MSELoss()
 
         # metric objects for calculating and averaging accuracy across batches
-        # self.train_r2 = R2Score(
-        #     num_outputs=n_regions, multioutput="raw_values"
-        # )
-        # self.val_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
-        # self.test_r2 = R2Score(num_outputs=n_regions, multioutput="raw_values")
         self.train_r2 = R2Score(num_outputs=n_regions)
         self.val_r2 = R2Score(num_outputs=n_regions)
         self.test_r2 = R2Score(num_outputs=n_regions)
@@ -47,9 +45,11 @@ class GraphAutoRegModule(LightningModule):
         # for tracking best so far validation r2
         self.val_r2_best = MaxMetric()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`."""
-        return self.net(x)
+        return self.net(x, edge_index)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -72,7 +72,7 @@ class GraphAutoRegModule(LightningModule):
             - A tensor of target labels.
         """
         x, y = batch
-        preds = self.forward(x)
+        preds = self.forward(x, self.edge_index)
         loss = self.criterion(preds, y)
         return loss, preds, y
 

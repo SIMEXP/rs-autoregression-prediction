@@ -191,10 +191,6 @@ class UKBBDataModule(LightningDataModule):
             / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
         )
         time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
-        self.connectome = time_sequence_h5["connectome"][:]
-        # self.edge_index = get_edge_index_threshold(
-        #     self.connectome, threshold=self.hparams.threshold
-        # )
         log.info(
             f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
         )
@@ -251,7 +247,38 @@ class UKBBDataModule(LightningDataModule):
                 )
 
         if stage == "test":
-            pass
+            if self.hparams.proportion_sample < 1.0:
+                tng_length = time_sequence_h5["train"]["input"].shape[0]
+                tng_index = list(
+                    range(int(tng_length * self.hparams.proportion_sample))
+                )
+                log.info(f"Number of sample: {len(tng_index)}")
+                self.data_train = Subset(
+                    TimeSeriesDataset(
+                        time_sequence_h5,
+                        set_type="train",
+                    ),
+                    tng_index,
+                )
+                val_length = time_sequence_h5["validation"]["input"].shape[0]
+                val_index = list(
+                    range(int(val_length * self.hparams.proportion_sample))
+                )
+                self.data_val = Subset(
+                    TimeSeriesDataset(
+                        time_sequence_h5,
+                        set_type="validation",
+                    ),
+                    val_index,
+                )
+            else:
+                self.data_train = TimeSeriesDataset(
+                    time_sequence_h5, set_type="train"
+                )
+                self.data_val = TimeSeriesDataset(
+                    time_sequence_h5,
+                    set_type="validation",
+                )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -441,35 +468,12 @@ def create_hold_out_sample(
     }
 
 
-def get_edge_index_threshold(
-    connectome: np.ndarray, threshold: float = 0.9
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Get the edge index of the graph from thresholded functional connectome.
-
-    Args:
-        connectome_file (str): path to the data h5 file
-        threshold (float): threshold value for the connectome (default=0.9)
-
-    Returns:
-        edge_index (tuple of np.ndarrays):
-            edge index of the graph in Coordinate Format (COO)
-    """
-    thres_index = int(connectome.shape[0] * connectome.shape[1] * threshold)
-    thres_value = np.sort(connectome.flatten())[thres_index]
-    adj_mat = connectome * (connectome >= thres_value)
-    del connectome
-    del thres_value
-    edge_index = np.nonzero(adj_mat)
-    del adj_mat
-    return edge_index
-
-
 if __name__ == "__main__":
     # test the data module
     _ = UKBBDataModule(
         connectome_file="inputs/connectomes/ukbb_libral_scrub_20240716_connectome.h5",
         phenotype_file="inputs/connectomes/ukbb_libral_scrub_20240716_phenotype.tsv",
-        data_dir="outputs/",
+        data_dir="inputs/data/",
         atlas=("MIST", 197),
         proportion_sample=1.0,
         timeseries_segment=0,
