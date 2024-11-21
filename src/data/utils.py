@@ -62,9 +62,15 @@ def make_sequence(
 
 
 def make_sequence_single_subject(
-    data: np.ndarray, length: int, stride: int = 1, lag: int = 1
+    data: np.ndarray,
+    m: int = None,
+    length: int = 16,
+    stride: int = 1,
+    lag: int = 1,
 ):
     """Slice a list of timeseries with sliding windows and get corresponding labels.
+
+    One can downsample the signal through decimation.
 
     For each data in data list, pairs generated will correspond to :
     `data[k:k+length]` for the sliding window and `data[k+length+lag-1]` for the label, with k
@@ -72,7 +78,8 @@ def make_sequence_single_subject(
 
     Args:
         data (numy arrays): data must be of shape (time_steps, features)
-        length (int): length of the sliding window
+        m (int): decimation factor. keep every m^th time point. (default=None)
+        length (int): length of the sliding window (default=16)
         stride (int): stride of the sliding window (default=1)
         lag (int): time step difference between last time step of sliding window and label time step
             (default=1)
@@ -81,6 +88,8 @@ def make_sequence_single_subject(
         X (numpy array): sliding windows array of shape (nb of sequences, features, length)
         Y (numpy array): labels array of shape (nb of sequences, features)
     """
+    if m is not None:
+        data = data[::m]
     X, Y = [], []
     delta = lag - 1
     for i in range(0, data.shape[0] - length - delta, stride):
@@ -130,7 +139,7 @@ def load_data(
 
 
 class TimeSeriesDataset(torch.utils.data.Dataset):
-    """Simple dataset for pytorch training loop"""
+    """Simple dataset for pytorch train/validation/test loop"""
 
     def __init__(self, time_sequence_h5, set_type="train", transform=None):
         self.data = time_sequence_h5

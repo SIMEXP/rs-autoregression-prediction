@@ -2,10 +2,16 @@ from typing import Any, Dict, Tuple
 
 import h5py
 import numpy as np
+import rootutils
 import torch
 from lightning import LightningModule
+from src.utils import RankedLogger
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.regression import R2Score
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 class GraphAutoRegModule(LightningModule):
@@ -28,7 +34,7 @@ class GraphAutoRegModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.net = net
-        self.edge_index = torch.tensor(edge_index)
+        self.edge_index = torch.tensor(edge_index, dtype=torch.int64)
         # loss function
         self.criterion = torch.nn.MSELoss()
 
@@ -36,6 +42,9 @@ class GraphAutoRegModule(LightningModule):
         self.train_r2 = R2Score(num_outputs=n_regions)
         self.val_r2 = R2Score(num_outputs=n_regions)
         self.test_r2 = R2Score(num_outputs=n_regions)
+        self.test_r2_full = R2Score(
+            num_outputs=n_regions, multioutput="raw_values"
+        )
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -72,7 +81,8 @@ class GraphAutoRegModule(LightningModule):
             - A tensor of target labels.
         """
         x, y = batch
-        preds = self.forward(x, self.edge_index)
+        edge_index = self.edge_index.clone().detach().to(x.device)
+        preds = self.forward(x, edge_index)
         loss = self.criterion(preds, y)
         return loss, preds, y
 
@@ -91,6 +101,7 @@ class GraphAutoRegModule(LightningModule):
         # update and log metrics
         self.train_loss(loss)
         self.train_r2(preds, targets)
+
         self.log(
             "train/loss",
             self.train_loss,
@@ -105,7 +116,6 @@ class GraphAutoRegModule(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
-
         # return loss or backpropagation will fail
         return loss
 
@@ -151,37 +161,36 @@ class GraphAutoRegModule(LightningModule):
             prog_bar=True,
         )
 
-    def test_step(self) -> None:
-        pass
+    def test_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> None:
+        """Perform a single test step on a batch of data from the test set.
 
-    # def test_step(
-    #     self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    # ) -> None:
-    #     """Perform a single test step on a batch of data from the test set.
+        :param batch: A batch of data (a tuple) containing the input tensor of images and target
+            labels.
+        :param batch_idx: The index of the current batch.
+        """
+        loss, preds, targets = self.model_step(batch)
 
-    #     :param batch: A batch of data (a tuple) containing the input tensor of images and target
-    #         labels.
-    #     :param batch_idx: The index of the current batch.
-    #     """
-    #     loss, preds, targets = self.model_step(batch)
+        # update and log metrics
+        self.test_loss(loss)
+        self.test_r2(preds, targets)
+        self.test_r2_full(preds, targets)
 
-    #     # update and log metrics
-    #     self.test_loss(loss)
-    #     self.test_r2(preds, targets)
-    #     self.log(
-    #         "test/loss",
-    #         self.test_loss,
-    #         on_step=False,
-    #         on_epoch=True,
-    #         prog_bar=True,
-    #     )
-    #     self.log(
-    #         "test/r2",
-    #         self.test_r2,
-    #         on_step=False,
-    #         on_epoch=True,
-    #         prog_bar=True,
-    #     )
+        self.log(
+            "test/loss",
+            self.test_loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            "test/r2",
+            self.test_r2,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""

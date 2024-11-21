@@ -19,5 +19,5 @@ hydra:
     setup:
       - export HYDRA_FULL_ERROR=1
       - export NCCL_DEBUG=INFO
-      - rsync -tv --info=progress2 ${oc.env:USER_PROJECT_PATH}/inputs/data/./atlas-${data.atlas[0]}${data.atlas[1]}_windowsize-${data.timeseries_window_stride_lag[0]}_seed-${seed}_data.h5 $SLURM_TMPDIR/atlas-${data.atlas[0]}${data.atlas[1]}_windowsize-${data.timeseries_window_stride_lag[0]}_seed-${seed}_data.h5
+      - rsync -tv --info=progress2 ${oc.env:USER_PROJECT_PATH}/inputs/data/./atlas-${data.atlas[0]}${data.atlas[1]}_decimate-${data.timeseries_decimate}_windowsize-${data.timeseries_window_stride_lag[0]}_stride-${data.timeseries_window_stride_lag[1]}_lag-${data.timeseries_window_stride_lag[2]}_seed-${seed}_data.h5 $SLURM_TMPDIR/atlas-${data.atlas[0]}${data.atlas[1]}_decimate-${data.timeseries_decimate}_windowsize-${data.timeseries_window_stride_lag[0]}_stride-${data.timeseries_window_stride_lag[1]}_lag-${data.timeseries_window_stride_lag[2]}_seed-${seed}_data.h5
       - rsync -tv --info=progress2 ${oc.env:USER_PROJECT_PATH}/inputs/data/./downstream_sample_seed-${seed}.json $SLURM_TMPDIR/downstream_sample_seed-${seed}.json

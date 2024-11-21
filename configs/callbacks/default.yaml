@@ -15,7 +15,7 @@ model_checkpoint:
 
 early_stopping:
   monitor: "val/r2_best"
-  patience: 100
+  patience: 10
   mode: "max"
 
 model_summary:

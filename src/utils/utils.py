@@ -20,6 +20,12 @@ def extras(cfg: DictConfig) -> None:
 
     :param cfg: A DictConfig object containing the config tree.
     """
+    if cfg.get("prepare_data"):
+        log.info("Creating dataset <cfg.prepare_data=True>")
+        if cfg.get("train") or cfg.get("test"):
+            log.info("Disable training or testing when preparing dataset.")
+            cfg.train, cfg.test = False, False
+
     # return if no `extras` config
     if not cfg.get("extras"):
         log.warning("Extras config not found! <cfg.extras=null>")
@@ -29,7 +35,7 @@ def extras(cfg: DictConfig) -> None:
     if (
         "SLURM_JOB_ID" in os.environ
         and os.environ["SLURM_JOB_NAME"] != "interactive"
-    ):
+    ) and not cfg.get("prepare_data"):
         log.info("Slrum job. Use SLRUM_TMP_DIR as data dir")
         cfg.paths.data_dir = f'{os.environ["SLURM_TMPDIR"]}'
 

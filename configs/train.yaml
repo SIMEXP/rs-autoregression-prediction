@@ -5,7 +5,7 @@
 defaults:
   - _self_
   - data: ukbb
-  - model: chebnet
+  - model: chebnet_default
   - callbacks: default
   - logger: null # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default
@@ -35,8 +35,11 @@ task_name: "train"
 # overwrite from command line with `python train.py tags="[first_tag, second_tag]"`
 tags: ["dev"]
 
+# create data set with data module; if true, train and test would be forced to be switch off
+prepare_data: false
+
 # set False to skip model training
-train: true
+train: false
 
 # evaluate on test set, using best model weights achieved during training
 # lightning chooses best weights based on the metric specified in checkpoint callback

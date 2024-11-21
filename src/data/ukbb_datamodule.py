@@ -34,8 +34,7 @@ class UKBBDataModule(LightningDataModule):
         phenotype_file: str,
         data_dir: str = "data/",
         atlas: Tuple[str, int] = ("MIST", 197),
-        proportion_sample: float = 1.0,
-        timeseries_segment: int = -1,
+        timeseries_decimate: int = 4,
         timeseries_window_stride_lag: Tuple[int, int, int] = (16, 1, 1),
         timeseries_horizon: int = 6,
         train_val_test_split: Tuple[float, float, float] = (0.6, 0.2, 0.2),
@@ -90,17 +89,21 @@ class UKBBDataModule(LightningDataModule):
         with open(path_sample_split, "r") as f:
             sample = json.load(f)
         # h5 path
-        out_path = (
-            Path(self.hparams.data_dir)
-            / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
+        out_path = Path(self.hparams.data_dir) / (
+            f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_"
+            f"decimate-{self.hparams.timeseries_decimate}_"
+            f"windowsize-{self.hparams.timeseries_window_stride_lag[0]}_"
+            f"stride-{self.hparams.timeseries_window_stride_lag[1]}_"
+            f"lag-{self.hparams.timeseries_window_stride_lag[-1]}_"
+            f"seed-{self.hparams.random_state}_data.h5"
         )
         if out_path.exists():
-            return
+            return None
 
         conn_dset_paths = load_ukbb_dset_path(
             participant_id=sample["train"],
             atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
-            segment=0,  # use full time series for calculating connectome
+            segment=0,  # use full time series, decimate later in make_sequence_single_subject
         )
         # calculate connectome
         connectome = create_connectome(
@@ -108,29 +111,26 @@ class UKBBDataModule(LightningDataModule):
             dset_paths=conn_dset_paths,
         )
         del conn_dset_paths
-        out_path = (
-            Path(self.hparams.data_dir)
-            / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
-        )
         # save connectome to disk as h5
         w, s, lag = self.hparams.timeseries_window_stride_lag
+        m = self.hparams.timeseries_decimate  # decimate factor
         n_regions = self.hparams.atlas[1]
         with h5py.File(out_path, "a") as f:
             f.create_dataset("connectome", data=connectome)
-            # make sequence
-            for dset in ["train", "validation"]:
+            # make sequence for train, val, test, for model training
+            for dset in sample:
                 cur_group = f.create_group(dset)
                 dset_paths = load_ukbb_dset_path(
                     participant_id=sample[dset],
                     atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
-                    segment=self.hparams.timeseries_segment,
+                    segment=0,  # always load the full time series, decimate later
                 )
-                log.info(f"Creating labels for {len(dset_paths)} segments.")
+                log.info(f"Creating labels for {len(dset_paths)} scans.")
                 for dset_path in tqdm(dset_paths):
                     data = load_data(self.hparams.connectome_file, dset_path)[
                         0
                     ]
-                    x, y = make_sequence_single_subject(data, w, s, lag)
+                    x, y = make_sequence_single_subject(data, m, w, s, lag)
                     if x.shape[0] == 0 or x is None:
                         log.warning(
                             f"Skipping {dset} as label couldn't be created."
@@ -162,63 +162,45 @@ class UKBBDataModule(LightningDataModule):
                         )
                         cur_group["label"][-y.shape[0] :] = y
 
-            cur_group = f.create_group("test")
-            test_dsets = load_ukbb_dset_path(
-                participant_id=sample["test"],
-                atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
-                segment=self.hparams.timeseries_segment,
-            )
-            for dset_path in tqdm(test_dsets):
-                fname = dset_path.split("/")[-1]
-                cur_seg = cur_group.create_group(fname)
-                with h5py.File(self.hparams.connectome_file, "r") as h5file:
-                    data = h5file[dset_path][:]
-                X, _ = make_sequence_single_subject(
-                    data,
-                    length=w + self.hparams.timeseries_horizon,
-                    stride=s,
-                    lag=0,
-                )
-                del data
-                Y = X[:, :, w:]
-                cur_seg.create_dataset(name="input", data=X, dtype=np.float32)
-                cur_seg.create_dataset(name="label", data=Y, dtype=np.float32)
+            # cur_group = f.create_group("test_horizon")
+            # test_dsets = load_ukbb_dset_path(
+            #     participant_id=sample["test"],
+            #     atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
+            #     segment=0,  # always load the full time series, decimate later
+            # )
+            # for dset_path in tqdm(test_dsets):
+            #     fname = dset_path.split("/")[-1]
+            #     cur_seg = cur_group.create_group(fname)
+            #     with h5py.File(self.hparams.connectome_file, "r") as h5file:
+            #         data = h5file[dset_path][:]
+            #     X, _ = make_sequence_single_subject(
+            #         data,
+            #         m=m,
+            #         length=w + self.hparams.timeseries_horizon,
+            #         stride=s,
+            #         lag=0,
+            #     )
+            #     del data
+            #     Y = X[:, :, w:]
+            #     cur_seg.create_dataset(name="input", data=X, dtype=np.float32)
+            #     cur_seg.create_dataset(name="label", data=Y, dtype=np.float32)
 
     def setup(self, stage: str) -> None:
         """Set up the data for training, validation, and testing."""
         self.time_sequence_file = str(
             Path(self.hparams.data_dir)
-            / f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_windowsize-{self.hparams.timeseries_window_stride_lag[0]}_seed-{self.hparams.random_state}_data.h5"
+            / (
+                f"atlas-{self.hparams.atlas[0]}{self.hparams.atlas[1]}_"
+                f"decimate-{self.hparams.timeseries_decimate}_"
+                f"windowsize-{self.hparams.timeseries_window_stride_lag[0]}_"
+                f"stride-{self.hparams.timeseries_window_stride_lag[1]}_"
+                f"lag-{self.hparams.timeseries_window_stride_lag[-1]}_"
+                f"seed-{self.hparams.random_state}_data.h5"
+            )
         )
         time_sequence_h5 = h5py.File(self.time_sequence_file, "r")
-        log.info(
-            f"Training on {100 * self.hparams.proportion_sample}% of the training sample"
-        )
-        if self.hparams.proportion_sample < 1.0:
-            tng_length = time_sequence_h5["train"]["input"].shape[0]
-            tng_index = list(
-                range(int(tng_length * self.hparams.proportion_sample))
-            )
-            log.info(f"Number of sample: {len(tng_index)}")
-            self.data_train = Subset(
-                TimeSeriesDataset(
-                    time_sequence_h5,
-                    set_type="train",
-                ),
-                tng_index,
-            )
-            val_length = time_sequence_h5["validation"]["input"].shape[0]
-            val_index = list(
-                range(int(val_length * self.hparams.proportion_sample))
-            )
-            self.data_val = Subset(
-                TimeSeriesDataset(
-                    time_sequence_h5,
-                    set_type="validation",
-                ),
-                val_index,
-            )
-        else:
+
+        if not self.data_train and not self.data_val and not self.data_test:
             self.data_train = TimeSeriesDataset(
                 time_sequence_h5, set_type="train"
             )
@@ -226,59 +208,10 @@ class UKBBDataModule(LightningDataModule):
                 time_sequence_h5,
                 set_type="validation",
             )
-
-        if stage == "validate":
-            if self.hparams.proportion_sample < 1.0:
-                val_length = time_sequence_h5["validation"]["input"].shape[0]
-                val_index = list(
-                    range(int(val_length * self.hparams.proportion_sample))
-                )
-                self.data_val = Subset(
-                    TimeSeriesDataset(
-                        time_sequence_h5,
-                        set_type="validation",
-                    ),
-                    val_index,
-                )
-            else:
-                self.data_val = TimeSeriesDataset(
-                    time_sequence_h5,
-                    set_type="validation",
-                )
-
-        if stage == "test":
-            if self.hparams.proportion_sample < 1.0:
-                tng_length = time_sequence_h5["train"]["input"].shape[0]
-                tng_index = list(
-                    range(int(tng_length * self.hparams.proportion_sample))
-                )
-                log.info(f"Number of sample: {len(tng_index)}")
-                self.data_train = Subset(
-                    TimeSeriesDataset(
-                        time_sequence_h5,
-                        set_type="train",
-                    ),
-                    tng_index,
-                )
-                val_length = time_sequence_h5["validation"]["input"].shape[0]
-                val_index = list(
-                    range(int(val_length * self.hparams.proportion_sample))
-                )
-                self.data_val = Subset(
-                    TimeSeriesDataset(
-                        time_sequence_h5,
-                        set_type="validation",
-                    ),
-                    val_index,
-                )
-            else:
-                self.data_train = TimeSeriesDataset(
-                    time_sequence_h5, set_type="train"
-                )
-                self.data_val = TimeSeriesDataset(
-                    time_sequence_h5,
-                    set_type="validation",
-                )
+            self.data_test = TimeSeriesDataset(
+                time_sequence_h5,
+                set_type="test",
+            )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -297,7 +230,17 @@ class UKBBDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             drop_last=True,
-            shuffle=False,
+            shuffle=True,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.data_test,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
+            drop_last=True,
+            shuffle=True,
         )
 
     def teardown(self, stage: Optional[str] = None) -> None:
@@ -328,8 +271,8 @@ class UKBBDataModule(LightningDataModule):
 def load_ukbb_dset_path(
     participant_id: List[str],
     atlas_desc: str,
-    segment: Union[int, List[int]] = -1,
-) -> Dict:
+    segment: Union[int, List[int]] = 0,
+) -> List[str]:
     """Load time series path in h5 file of UK Biobank.
 
     We segmented the time series per subject as independent samples,
@@ -342,11 +285,11 @@ def load_ukbb_dset_path(
             such as the right `desc` field for atlas,
             e.g., "atlas-MIST_desc-197".
         segment (Union[int, List[int]], optional): segments of the
-            time series to use. 0 for the full time series.
-            Defaults to -1 to load all four segments.
+            time series to use. Default 0 for the full time series.
+            -1 to load all four segments.
 
     Returns:
-        List[Union[np.ndarray, str, int, float]]: loaded data.
+        List[str]: loaded data paths.
     """
     if isinstance(segment, int) and segment > 4:
         raise ValueError(
@@ -379,6 +322,40 @@ def load_ukbb_dset_path(
             )
             h5_path.append(cur_sub_path)
     return h5_path
+
+
+def load_ukbb_sets(
+    data_dir: str, seed: int, atlas: Tuple[str, int], stage="test"
+) -> List[str]:
+    """Load train / validation / test set h5 dataset path for ukbb.
+
+    Args:
+        data_dir (str): _description_
+        seed (int): _description_
+        atlas (Tuple[str, int]): _description_
+        stage (str, optional): _description_. Defaults to "test".
+
+    Returns:
+        Dict: _description_
+    """
+    if stage == "test_downstreams":
+        raise ValueError(
+            "Request the label of patient group: 'ADD', "
+            "'ALCO', 'DEP', 'SCZ', 'BIPOLAR', 'PARK', 'MS', 'EPIL'"
+        )
+    # get dset paths
+    path_sample_split = f"{data_dir}/downstream_sample_seed-{seed}.json"
+
+    with open(path_sample_split, "r") as f:
+        if stage in ["train", "validation", "test"]:
+            subj_list = json.load(f)[stage]
+        else:
+            subj_list = json.load(f)["test_downstreams"][stage]
+    return load_ukbb_dset_path(
+        participant_id=subj_list,
+        atlas_desc=f"atlas-{atlas[0]}_desc-{atlas[1]}",
+        segment=0,  # use full time series, decimate later in make_sequence_single_subject
+    )
 
 
 def create_hold_out_sample(
@@ -476,7 +453,7 @@ if __name__ == "__main__":
         data_dir="inputs/data/",
         atlas=("MIST", 197),
         proportion_sample=1.0,
-        timeseries_segment=0,
+        timeseries_decimate=4,
         timeseries_window_stride_lag=(16, 1, 1),
         train_val_test_split=(0.6, 0.2, 0.2),
         class_balance_confounds=[

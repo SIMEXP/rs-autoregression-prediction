@@ -17,7 +17,7 @@ class Chebnet(nn.Module):
         edge_index (tuple of numpy arrays): edges of the graph connectivity in Coordinate Format (COO)
         FK (str): string of comma-separated integers, interlaced list of F and K with:
             F the list of the numbers of output features for each layer (e.g. '4,4,2')
-            K the list of the orders of the Tchebychev polynomial for each layer
+            K the list of the orders of the chebychev polynomial for each layer
             The list is a str with comma separated digits, e.g. for F = [16,8,8] and K = [3,3,1] FK is
             '16,3,8,3,8,1'.
         M (str): dimensionality of FC layers, string of comma-separated integers
@@ -71,9 +71,11 @@ class Chebnet(nn.Module):
         for i in range(len(K)):
             layers.append(
                 ChebConv(
-                    in_channels=F[i],
+                    in_channels=F[
+                        i
+                    ],  # size of each input sample in time dimension
                     out_channels=F[i + 1],
-                    K=K[i],
+                    K=K[i],  # number of filters
                     normalization="sym",  # chev conv default
                     bias=True,  # chev conv default
                     aggr=aggrs[i],

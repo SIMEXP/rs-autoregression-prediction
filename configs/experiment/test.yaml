@@ -4,6 +4,7 @@
 # python train.py experiment=example
 
 defaults:
+  - override /model: chebnet_default
   - override /callbacks: default
   - override /trainer: gpu
 
@@ -15,12 +16,12 @@ tags: [ukbb, gcn, dev]
 seed: 1
 
 trainer:
-  min_epochs: 2
-  max_epochs: 15
+  min_epochs: 1
+  max_epochs: 3
 
 data:
-  batch_size: 512
-  proportion_sample: 0.01
+  proportion_sample: 1.0
+  num_workers: 9
   pin_memory: true
 
 logger:
