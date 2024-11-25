@@ -1,0 +1,12 @@
+defaults:
+  - early_stopping
+  - model_summary
+  - _self_
+
+early_stopping:
+  monitor: "val/r2_best"
+  patience: 4
+  mode: "max"
+
+model_summary:
+  max_depth: -1

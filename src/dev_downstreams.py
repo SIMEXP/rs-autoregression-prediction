@@ -20,8 +20,14 @@ from nilearn.plotting import (
 )
 from omegaconf import OmegaConf, open_dict
 from scipy.stats import zscore
-from sklearn.linear_model import LogisticRegression, Ridge, RidgeClassifier
-from sklearn.metrics import mean_squared_error
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import (
+    Lasso,
+    LogisticRegression,
+    Ridge,
+    RidgeClassifier,
+)
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import (
     ShuffleSplit,
     StratifiedKFold,
@@ -43,8 +49,8 @@ CKPT_FEAT = "outputs/autoreg/logs/eval/runs/2024-11-19_15-49-25/features.h5"
 measure2data = {
     "connectome_baseline": "connectome",
     "connectome_z": "horizon-all_connectome",
-    "r2map": "r2map",
-    "avgr2": "r2map",
+    # "r2map": "r2map",
+    # "avgr2": "r2map",
     "conv_max": "layer-3_pooling-max_gcnweights_connectome",
     "conv_avg": "layer-3_pooling-average_gcnweights_connectome",
     "conv_std": "layer-3_pooling-std_gcnweights_connectome",
@@ -126,7 +132,7 @@ def get_model_data(
     with h5py.File(cfg.feature_path, "r") as h5file:
         for p in selected_path:
             d = h5file[p][:]
-            if d.shape[-1] == 6:  # last dimention is horizon
+            if d.shape[-1] == 6:  # last dimension is horizon
                 d = d[..., 0]  # use t+1
             if "connectome" in p:
                 d = sym_matrix_to_vec(d, discard_diagonal=True)
@@ -170,51 +176,64 @@ with open_dict(cfg):
 
 def train(cfg, sample, measure):
     data = get_model_data(cfg, sample, measure, "age")
-    minmax_scaler = MinMaxScaler()
-    y_m = minmax_scaler.fit_transform(data["label"])
+    y = data["label"]
     standard_scalar = StandardScaler()
     x_z = standard_scalar.fit_transform(data["data"])
     # x_z = data['data']
-    clf = Ridge(
-        alpha=1.0,
-        fit_intercept=True,
-        copy_X=True,
-        max_iter=None,
-        tol=0.0001,
-        solver="auto",
-        positive=False,
-        random_state=cfg.seed,
-    )
+    clf = Lasso(alpha=0.1, random_state=cfg.seed)
+    # clf = Ridge(
+    #     alpha=0.1,
+    #     fit_intercept=True,
+    #     copy_X=True,
+    #     max_iter=None,
+    #     tol=0.0001,
+    #     solver="auto",
+    #     positive=False,
+    #     random_state=cfg.seed,
+    # )
+    # clf = MLPRegressor(
+    #     hidden_layer_sizes=(256, 64),
+    #     batch_size=8,
+    #     alpha=0.1,
+    #     learning_rate_init=1e-3,
+    #     max_iter=50
+    # )
     rs = ShuffleSplit(n_splits=5, test_size=0.2)
     metrics = []
     for i, (train_index, test_index) in enumerate(rs.split(x_z)):
-        clf.fit(x_z[train_index, :], y_m[train_index, :])
+        clf.fit(x_z[train_index, :], y[train_index, :])
         y_pred = clf.predict(x_z[test_index, :])
-        score = mean_squared_error(y_m[test_index, :], y_pred)
-        print(f"metric: {measure} MSE_age = {score}")
+        mse = mean_squared_error(y[test_index, :], y_pred)
+        mae = mean_absolute_error(y[test_index, :], y_pred)
+        r2 = r2_score(y[test_index, :], y_pred)
+        print(
+            f"metric: {measure} MSE = {mse}, MAE = {mae}, r2 = {r2} N={y.shape[0]}"
+        )
         metric = {
             "sample": sample,
             "fold": i + 1,
             "measure": measure,
-            "mse": score,
+            "mse": mse,
+            "mae": mae,
+            "r2": r2,
         }
         metrics.append(metric)
     return metrics
 
 
-# results = []
-# for s in [0.05, 0.1, 0.25, 0.5]:
-#     for m in measure2data:
-#         metrics = train(cfg, s, m)
-#         results += metrics
-
-results = Parallel(n_jobs=4, verbose=1, pre_dispatch="1.5*n_jobs")(
+results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
     delayed(train)(cfg, s, m)
     for m in measure2data
-    for s in [0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
+    for s in [1.0, 0.75, 0.5, 0.25, 0.1, 0.05, 0.01]
 )
 
-pd.DataFrame.from_dict(results).to_csv("age_mse_test.tsv", sep="\t")
+rr = []
+for r in results:
+    rr += r
+
+pd.DataFrame.from_dict(rr, orient="columns").to_csv(
+    "age_mse_test.tsv", sep="\t"
+)
 
 # """
 # Execute at the root of the repo, not in the code directory.

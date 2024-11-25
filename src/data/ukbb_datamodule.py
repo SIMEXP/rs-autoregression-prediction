@@ -230,7 +230,7 @@ class UKBBDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             drop_last=True,
-            shuffle=True,
+            shuffle=False,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -240,7 +240,7 @@ class UKBBDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             drop_last=True,
-            shuffle=True,
+            shuffle=False,
         )
 
     def teardown(self, stage: Optional[str] = None) -> None:

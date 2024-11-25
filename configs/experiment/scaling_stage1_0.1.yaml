@@ -1,0 +1,35 @@
+# @package _global_
+
+# to execute this experiment run:
+# python src/train.py experiment=example
+
+defaults:
+  - override /model: chebnet_default
+  - override /callbacks: scaling
+  - override /trainer: gpu
+  - override /logger: csv
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: [ukbb, gcn, dev]
+
+proportion_sample: 0.1
+
+train: true
+
+test: true
+
+trainer:
+  min_epochs: 1
+  max_epochs: 20
+  limit_train_batches: ${proportion_sample}
+  limit_val_batches: ${proportion_sample}
+
+data:
+  num_workers: 8
+  pin_memory: true
+
+logger:
+  csv:
+    prefix: ${tags[0]}
