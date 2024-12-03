@@ -18,6 +18,7 @@ from omegaconf import OmegaConf, open_dict
 from scipy.stats import zscore
 from src.data.ukbb_datamodule import load_ukbb_dset_path
 from src.data.utils import load_data
+from src.models.components.chebnet import NonsharedFC
 from src.models.components.hooks import predict_horizon, save_extracted_feature
 from src.models.plotting import plot_horizon
 
@@ -35,8 +36,6 @@ with open_dict(cfg):
     cfg.paths = {"data_dir": "inputs/data"}
 
 # load the model
-# from src.models.autoreg_module import GraphAutoRegModule
-# model = GraphAutoRegModule.load_from_checkpoint(CKPT_PATH)
 ckpt = torch.load(CKPT_PATH)
 model_weights = ckpt["state_dict"]
 for key in list(model_weights):  # hack to use the model directly
@@ -57,15 +56,13 @@ conn_dset_paths = load_ukbb_dset_path(
     segment=0,  # use full time series, decimate later in make_sequence_single_subject
 )
 
-f = h5py.File(output_extracted_feat, "w")
-
 dset_path = conn_dset_paths[0]  # load just one subject
 data = load_data(cfg.data.connectome_file, dset_path)[
     0
 ]  # remember this is the original TR
 
 # make labels per subject
-y, z, convlayers, ts_r2 = predict_horizon(
+y, z, layer_features, ts_r2 = predict_horizon(
     horizon,
     net,
     data,
@@ -73,12 +70,102 @@ y, z, convlayers, ts_r2 = predict_horizon(
     timeseries_window_stride_lag=cfg.data.timeseries_window_stride_lag,
     timeseries_decimate=cfg.data.timeseries_decimate,
 )
-# save to h5 file, create more features
-save_extracted_feature(data[::4], y, z, convlayers, ts_r2, f, dset_path)
 
+# save to h5 file, create more features
+f = h5py.File(output_extracted_feat, "w")
+save_extracted_feature(data[::4], y, z, layer_features, ts_r2, f, dset_path)
 f.close()
 
+# # just plot everything with PCC
+# from nilearn.connectome import ConnectivityMeasure
 # conn = ConnectivityMeasure(kind='correlation')
+# mist197 = NiftiLabelsMasker(MIST197).fit()
+# for k in range(len(convlayers)):
+#     last_layer_weights = []
+#     for t in convlayers[k]:
+#         last_layer_weights.append(t[:, :, 0])
+#     last_layer_weights = np.array(last_layer_weights)
+
+#     for i in range(last_layer_weights.shape[-1]):
+#         nii_weights = mist197.inverse_transform(last_layer_weights[:, :, i].mean(axis=0))
+#         plt.figure()
+#         plot_img_on_surf(
+#           nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,
+#         )
+#         plt.savefig(f'outputs/filters/FClayer_average_node{i+1}.png')
+#         plt.close()
+#         del nii_weights
+
+#         nii_weights = mist197.inverse_transform(last_layer_weights[:, :, i].max(axis=0))
+#         plt.figure()
+#         plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#         plt.savefig(f'outputs/filters/FClayer_max_node{i+1}.png')
+#         plt.close()
+#         del nii_weights
+
+#     nii_weights = mist197.inverse_transform(last_layer_weights.mean(axis=(0, -1)))
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#         colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_average.png')
+#     plt.close()
+#     del nii_weights
+#     nii_weights = mist197.inverse_transform(last_layer_weights.max(axis=(0, -1)))
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#         colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_max.png')
+#     plt.close()
+#     del nii_weights
+#     nii_weights = mist197.inverse_transform(last_layer_weights.std(axis=(0, -1)))
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_std.png')
+#     plt.close()
+#     del nii_weights
+
+#     weights_con_filter = conn.fit_transform([last_layer_weights.mean(axis=-1)])
+#     nii_weights = mist197.inverse_transform(weights_con_filter[:, 29])
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_average_pcc.png')
+#     plt.close()
+#     del nii_weights
+#     del weights_con_filter
+#     weights_con_filter = conn.fit_transform([last_layer_weights.std(axis=-1)])
+#     nii_weights = mist197.inverse_transform(weights_con_filter[:, 29])
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_std_pcc.png')
+#     plt.close()
+#     del nii_weights
+#     del weights_con_filter
+#     weights_con_filter = conn.fit_transform([last_layer_weights.max(axis=-1)])
+#     nii_weights = mist197.inverse_transform(weights_con_filter[:, 29])
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_max_pcc.png')
+#     plt.close()
+#     del nii_weights
+#     del weights_con_filter
+# for i in range(last_layer_weights.shape[-1]):
+#     weights_con_filter = conn.fit_transform([last_layer_weights[:, :, i]])
+#     nii_weights = mist197.inverse_transform(weights_con_filter[:, 29])
+#     plt.figure()
+#     plot_img_on_surf(nii_weights, views=["lateral", "medial"],hemispheres=["left", "right"],
+#           colorbar=True,bg_on_data=True,)
+#     plt.savefig(f'outputs/filters/FClayer_filter{i+1}_pcc.png')
+#     plt.close()
+#     del nii_weights
+#     del weights_con_filter
+
+
 # for h in range(horizon):
 #     # functional connectivity from simulated signal
 #     y_conn, z_conn = conn.fit_transform([y[:, :, h], z[:, :, h]])
@@ -139,7 +226,8 @@ f.close()
 #             plt.close()
 
 #     #     # get all kinds of pooling for all layer
-#     #     last_layer_weights = np.moveaxis(np.concatenate(convlayers[0], axis=-1), 0, -1)  # (# ROI, # outputs nodes, # time windows)
+#           # (# ROI, # outputs nodes, # time windows)
+#     #     last_layer_weights = np.moveaxis(np.concatenate(convlayers[0], axis=-1), 0, -1)
 #     #     last_layer_weights = torch.tensor(last_layer_weights).unsqueeze(0)  # 0 dimension is batch
 #     #     _, n_parcel, n_output_nodes, n_time = last_layer_weights.shape
 #     #     pooling_funcs = generate_pooling_funcs(n_parcel, n_output_nodes, kernel_time=n_output_nodes)

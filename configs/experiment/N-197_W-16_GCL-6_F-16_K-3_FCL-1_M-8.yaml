@@ -7,14 +7,12 @@ defaults:
   - override /model: chebnet_default
   - override /callbacks: scaling
   - override /trainer: gpu
-  - override /logger: csv
+  - override /logger: many_loggers
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
 tags: [ukbb, gcn, dev]
-
-proportion_sample: 0.1
 
 train: true
 
@@ -29,6 +27,17 @@ trainer:
 data:
   num_workers: 8
   pin_memory: true
+
+model:
+  net:
+    _target_: src.models.components.chebnet.Chebnet
+    n_emb: ${data.atlas[1]}
+    seq_len: ${data.timeseries_window_stride_lag[0]}
+    FK: 16,3,16,3,16,3,16,3,16,3,16,3
+    M: 8,1
+    FC_type: nonshared_uni
+    dropout: 0
+    bn_momentum: 0.1
 
 logger:
   csv:

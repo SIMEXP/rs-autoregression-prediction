@@ -69,7 +69,7 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         cfg.ckpt_path, hydra.utils.instantiate(cfg.model.net)
     )
     net.eval()  # put in evaluation mode
-    log.info(f"Loading test set subjects")
+    log.info("Loading test set subjects")
     conn_dset_paths: List = load_ukbb_sets(
         cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
     )
@@ -96,7 +96,10 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         save_extracted_feature(
             data[::4], y, z, convlayers, ts_r2, f, dset_path
         )
-
+        del y
+        del z
+        del convlayers
+        del ts_r2
     log.info("Extraction completed.")
     f.close()
     return None, None  # competibility with task wrapper

@@ -118,7 +118,7 @@ class UKBBDataModule(LightningDataModule):
         with h5py.File(out_path, "a") as f:
             f.create_dataset("connectome", data=connectome)
             # make sequence for train, val, test, for model training
-            for dset in sample:
+            for dset in ["train", "validation", "test"]:
                 cur_group = f.create_group(dset)
                 dset_paths = load_ukbb_dset_path(
                     participant_id=sample[dset],

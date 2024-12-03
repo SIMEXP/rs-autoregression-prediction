@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Union
 
@@ -27,7 +28,14 @@ from sklearn.linear_model import (
     Ridge,
     RidgeClassifier,
 )
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import (
     ShuffleSplit,
     StratifiedKFold,
@@ -44,24 +52,52 @@ from tqdm import tqdm
 
 CKPT_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/checkpoints/epoch=059-val_r2_best=0.167.ckpt"
 CFG_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/csv/version_0/hparams.yaml"
-CKPT_FEAT = "outputs/autoreg/logs/eval/runs/2024-11-19_15-49-25/features.h5"
+CKPT_FEAT = (
+    "outputs/autoreg/logs/eval/multiruns/2024-11-27_22-16-24/0/features.h5"
+)
 
 measure2data = {
     "connectome_baseline": "connectome",
     "connectome_z": "horizon-all_connectome",
-    # "r2map": "r2map",
-    # "avgr2": "r2map",
-    "conv_max": "layer-3_pooling-max_gcnweights_connectome",
-    "conv_avg": "layer-3_pooling-average_gcnweights_connectome",
-    "conv_std": "layer-3_pooling-std_gcnweights_connectome",
+    "r2map": "r2map",
+    "avgr2": "r2map",
 }
+measures = [
+    "connectome_baseline",
+    "connectome_z",
+    "r2map",
+    "layer-NonsharedFC1_pooling-average_weights",
+    "layer-NonsharedFC1_pooling-max_weights",
+    "layer-NonsharedFC1_pooling-std_weights",
+    "layer-ChebConv3_pooling-average_weights",
+    "layer-ChebConv3_pooling-max_weights",
+    "layer-ChebConv3_pooling-std_weights",
+]
 
 
-def get_model_data(
+def measure_name_validator(measure):
+    if measure in [
+        "connectome_baseline",
+        "connectome_z",
+        "r2map",
+        "avgr2",
+    ]:
+        return measure2data[measure]
+    weight_patter = r"layer-[A-z\d]*_pooling-[a-z]*_weights"
+    results = re.match(weight_patter, measure)
+    if results is None:
+        raise NotImplementedError(
+            "measure must be one of 'connectome_baseline', "
+            "'connectome_z','r2map', 'avgr2'"
+            " or in the format of 'layer-{layername}{layernumber}_pooling-{pooling}_weights'."
+        )
+    else:
+        return measure
+
+
+def prepare_model_data(
     cfg,
-    sample_size: float = 0.1,
     measure: str = "connectome",
-    label: str = "sex",
 ) -> Dict[str, np.ndarray]:
     """Get the data from pretrained model for the downstrean task.
 
@@ -72,8 +108,6 @@ def get_model_data(
         phenotype_file (Union[Path, str]): Path to the phenotype file.
         measure (str, optional): Measure to use for the data. Defaults
             to "connectome".
-        label (str, optional): Label to use for the data. Defaults to
-            "sex".
 
     Returns:
         Dict[str, np.ndarray]: Dictionary with the data and label.
@@ -82,72 +116,29 @@ def get_model_data(
         NotImplementedError: If the measure is not supported.
     """
 
-    if measure not in [
-        "connectome_baseline",
-        "connectome_z",
-        "r2map",
-        "avgr2",
-        "conv_max",
-        "conv_avg",
-        "conv_std",
-    ]:
-        raise NotImplementedError(
-            "measure must be one of 'connectome_baseline', "
-            "'connectome_z','r2map', 'avgr2'"
-            " or 'conv_max', 'conv_avg', 'conv_std'."
-        )
-    if label in ["sex", "age"]:
-        dset_path = load_ukbb_sets(
-            cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
-        )
-    else:
-        dset_path = load_ukbb_sets(
-            cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage=label
-        )
+    cleaned_measure = measure_name_validator(measure)
+
+    dset_path = load_ukbb_sets(
+        cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
+    )
+    #     dset_path = load_ukbb_sets(
+    #         cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage=label
+    #     )
     participant_id = [
         p.split("/")[-1].split("sub-")[-1].split("_")[0] for p in dset_path
     ]
-    n_total = int(len(participant_id) * sample_size)
     df_phenotype = load_phenotype(cfg.data.phenotype_file)
-    # get the common subject in participant_id and df_phenotype
-    participant_id = list(
-        set(participant_id[:n_total]) & set(df_phenotype.index)
-    )
-    dset_path = dset_path[:n_total]
-    # get extra subjects in participant_id
-    # remove extra subjects in dset_path
-    print(
-        f"Subjects with phenotype data: {len(participant_id)}. Total subjects: {n_total}"
-    )
 
+    # get the common subject in participant_id and df_phenotype
+    participant_id = list(set(participant_id) & set(df_phenotype.index))
     # figure put what extracted feature to load from cfg.features_path
     for p in dset_path:
         subject = p.split("/")[-1].split("sub-")[-1].split("_")[0]
-        p = p.replace("timeseries", measure2data[measure])
+        p = p.replace("timeseries", cleaned_measure)
         if subject in participant_id:
             df_phenotype.loc[subject, "path"] = p
-    selected_path = df_phenotype.loc[participant_id, "path"].values.tolist()
-
-    data = []
-    with h5py.File(cfg.feature_path, "r") as h5file:
-        for p in selected_path:
-            d = h5file[p][:]
-            if d.shape[-1] == 6:  # last dimension is horizon
-                d = d[..., 0]  # use t+1
-            if "connectome" in p:
-                d = sym_matrix_to_vec(d, discard_diagonal=True)
-            elif measure == "avgr2":
-                d = d.mean()
-            data.append(d)
-
-    labels = np.array(df_phenotype.loc[participant_id, label].values).reshape(
-        -1, 1
-    )
-    data = np.array(data)
-    if measure == "avgr2":
-        data = data.reshape(-1, 1)
-    dataset = {"data": data, "label": labels}
-    return dataset
+    # remove data with no path value
+    return df_phenotype.dropna(axis=0, subset="path")
 
 
 def load_phenotype(path: Union[Path, str]) -> pd.DataFrame:
@@ -168,72 +159,117 @@ def load_phenotype(path: Union[Path, str]) -> pd.DataFrame:
     return df
 
 
-cfg = OmegaConf.load(CFG_PATH)
-with open_dict(cfg):
-    cfg.paths = {"data_dir": "inputs/data"}
-    cfg.feature_path = CKPT_FEAT
+def load_brain_features(cfg, labels):
+    selected_path = labels["path"].values.tolist()
+    data = []
+    with h5py.File(cfg.feature_path, "r") as h5file:
+        for p in selected_path:
+            d = h5file[p][:]
+
+            if d.shape[-1] == 6:  # last dimension should always be horizon
+                d = d[..., 0]  # use t+1
+            if "connectome" in p:
+                d = sym_matrix_to_vec(d, discard_diagonal=True)
+            elif measure == "avgr2":
+                d = d.mean()
+            elif "pooling" in measure:
+                d = d.flatten()
+            data.append(d)
+    return pd.DataFrame(np.array(data), index=selected_path)
 
 
-def train(cfg, sample, measure):
-    data = get_model_data(cfg, sample, measure, "age")
-    y = data["label"]
-    standard_scalar = StandardScaler()
-    x_z = standard_scalar.fit_transform(data["data"])
-    # x_z = data['data']
-    clf = Lasso(alpha=0.1, random_state=cfg.seed)
-    # clf = Ridge(
-    #     alpha=0.1,
-    #     fit_intercept=True,
-    #     copy_X=True,
-    #     max_iter=None,
-    #     tol=0.0001,
-    #     solver="auto",
-    #     positive=False,
-    #     random_state=cfg.seed,
-    # )
-    # clf = MLPRegressor(
-    #     hidden_layer_sizes=(256, 64),
-    #     batch_size=8,
-    #     alpha=0.1,
-    #     learning_rate_init=1e-3,
-    #     max_iter=50
-    # )
-    rs = ShuffleSplit(n_splits=5, test_size=0.2)
-    metrics = []
-    for i, (train_index, test_index) in enumerate(rs.split(x_z)):
-        clf.fit(x_z[train_index, :], y[train_index, :])
-        y_pred = clf.predict(x_z[test_index, :])
+def load_training_data(cfg, all_labels, all_brain, phenotype, sample):
+    path_sample_split = (
+        f"{cfg.paths.data_dir}/downstream_sample_seed-{cfg.seed}.json"
+    )
+    if phenotype in ["sex", "age"] and sample == 1.0:
+        y = all_labels.loc[:, phenotype].values
+        x = zscore(all_brain.values, axis=1)
+    elif phenotype not in ["sex", "age"]:
+        with open(path_sample_split, "r") as f:
+            subj_list = json.load(f)["test_downstreams"][phenotype]
+        y = all_labels.loc[subj_list, phenotype].values
+        x = zscore(all_brain.loc[subj_list, :], axis=1)
+    else:
+        with open(path_sample_split, "r") as f:
+            subj_list = json.load(f)["test"]
+            n_subject = int(sample * len(subj_list))
+            subj_list = subj_list[:n_subject]
+        y = all_labels.loc[subj_list, phenotype].values
+        x = zscore(all_brain.loc[subj_list, :], axis=1)
+    return x, y
+
+
+def train(x, y, i, train_index, test_index):
+    clf.fit(x[train_index, :], y[train_index, :])
+    y_pred = clf.predict(x[test_index, :])
+    if phenotype == "age":
         mse = mean_squared_error(y[test_index, :], y_pred)
         mae = mean_absolute_error(y[test_index, :], y_pred)
         r2 = r2_score(y[test_index, :], y_pred)
         print(
-            f"metric: {measure} MSE = {mse}, MAE = {mae}, r2 = {r2} N={y.shape[0]}"
+            f"{phenotype} metric: {measure} MSE = {mse}, MAE = {mae}, "
+            f"r2 = {r2} N={y.shape[0]}"
         )
         metric = {
             "sample": sample,
             "fold": i + 1,
             "measure": measure,
+            "phenotype": phenotype,
             "mse": mse,
             "mae": mae,
             "r2": r2,
         }
-        metrics.append(metric)
-    return metrics
+    elif phenotype == "sex":
+        metric = {
+            "sample": sample,
+            "fold": i + 1,
+            "measure": measure,
+            "phenotype": phenotype,
+            "accuracy": accuracy_score(y[test_index, :], y_pred),
+            "f1": f1_score(y[test_index, :], y_pred),
+            "auc": roc_auc_score(y[test_index, :], y_pred),
+        }
+        print(
+            f"{phenotype} metric: {measure} ACC = {metric['accuracy']}, F1 = {metric['f1']}, AUC = {metric['auc']} N={y.shape[0]}"
+        )
+    return metric
 
 
-results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
-    delayed(train)(cfg, s, m)
-    for m in measure2data
-    for s in [1.0, 0.75, 0.5, 0.25, 0.1, 0.05, 0.01]
-)
+# actual code
+if __name__ == "__main__":
+    cfg = OmegaConf.load(CFG_PATH)
+    with open_dict(cfg):
+        cfg.paths = {"data_dir": "inputs/data"}
+        cfg.feature_path = CKPT_FEAT
 
-rr = []
-for r in results:
-    rr += r
+    measure = "layer-NonsharedFC1_pooling-average_weights"
+    phenotype = "sex"
+    sample = 1.0
 
-pd.DataFrame.from_dict(rr, orient="columns").to_csv(
-    "age_mse_test.tsv", sep="\t"
-)
+    all_labels = prepare_model_data(
+        cfg, measure
+    )  # always use sex or age to load the full set
+    all_brain = load_brain_features(cfg, all_labels)
+    assert all_labels.shape[0] == all_brain.shape[0]
+    if phenotype == "age":
+        clf = Lasso(alpha=0.1, random_state=cfg.seed)
+    else:
+        clf = LogisticRegression(
+            penalty="l2", class_weight="balanced", random_state=cfg.seed
+        )
+    x, y = load_training_data(
+        cfg, all_labels, all_brain, phenotype=phenotype, sample=sample
+    )
+    rs = ShuffleSplit(n_splits=5, test_size=0.2)
+    results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
+        delayed(train)(x, y, i, train_index, test_index)
+        for i, (train_index, test_index) in enumerate(rs.split(x))
+    )
+    pd.DataFrame.from_dict(results, orient="columns").to_csv(
+        f"downstream_{phenotype}.tsv", sep="\t"
+    )
+
 
 # """
 # Execute at the root of the repo, not in the code directory.

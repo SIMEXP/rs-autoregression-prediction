@@ -1,6 +1,7 @@
 defaults:
   - early_stopping
   - model_summary
+  - wandb_osh
   - _self_
 
 early_stopping:

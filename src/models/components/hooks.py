@@ -8,21 +8,24 @@ import torch.nn as nn
 from nilearn.connectome import ConnectivityMeasure
 from sklearn.metrics import r2_score
 from src.data.utils import load_data, make_sequence_single_subject
+from src.models.components.chebnet import NonsharedFC
 from src.models.components.pooling import StdPool2d
 from torch_geometric.nn import ChebConv
 
 
-def extract_chebnet_output_weight(
+def extract_output_weight(
     model: nn.Module, x: torch.Tensor, edge_index: torch.Tensor
 ):
-    weights = []
+    weights = {}
     hooks = []
 
     def hook_fn(layer, input, output):
-        return weights.append(output.detach().numpy())
+        if not weights.get(layer._get_name()):
+            weights[layer._get_name()] = []
+        return weights[layer._get_name()].append(output.detach().numpy())
 
     for _, module in model.named_modules():
-        if isinstance(module, ChebConv):
+        if isinstance(module, ChebConv) or isinstance(module, NonsharedFC):
             hook = module.register_forward_hook(hook_fn)
             hooks.append(hook)
 
@@ -35,23 +38,23 @@ def extract_chebnet_output_weight(
     return z, weights
 
 
-def generate_pooling_funcs(n_parcel, n_output_nodes, kernel_time=1):
+def generate_pooling_funcs(n_parcel, kernel_nodes, kernel_time=1):
     pooling_funcs = {
         # '1dconv': lambda x: nn.Conv2d(in_channels=n_parcel, out_channels=n_parcel, stride=1, kernel_size=(n_output_nodes, kernel_time))(x).detach().numpy().squeeze(),
         "max": lambda x: nn.MaxPool2d(
-            kernel_size=(n_output_nodes, kernel_time), stride=1
+            kernel_size=(kernel_nodes, kernel_time), stride=1
         )(x)
         .detach()
         .numpy()
         .squeeze(),
         "average": lambda x: nn.AvgPool2d(
-            kernel_size=(n_output_nodes, kernel_time), stride=1
+            kernel_size=(kernel_nodes, kernel_time), stride=1
         )(x)
         .detach()
         .numpy()
         .squeeze(),
         "std": lambda x: StdPool2d(
-            kernel_size=(n_output_nodes, kernel_time), stride=1
+            kernel_size=(kernel_nodes, kernel_time), stride=1
         )(x)
         .detach()
         .numpy()
@@ -73,32 +76,41 @@ def predict_horizon(
     history, _ = make_sequence_single_subject(data, m, w + horizon, s, 0)
     y = history[:, :, w:]
     x = history[:, :, :w]
-    z, convlayers = [], []
+    z, layers = [], []
     for h in range(horizon):
         if h > 0:
-            # see recursive forcasting:
+            # see recursive forecasting:
             # https://www.ethanrosenthal.com/2019/02/18/time-series-for-scikit-learn-people-part3/
-            # this is the simplist form of AR forcasting
+            # this is the simplest form of AR forecasting
             # move window forward by one, append predicted time point
             # this is the new input to predict t+h
             x = np.concatenate((x.detach().numpy()[:, :, 1:], z[-1]), axis=-1)
         x = torch.tensor(x, dtype=torch.float32)
-        cur_z, cur_weights = extract_chebnet_output_weight(net, x, edge_index)
+        cur_z, cur_weights = extract_output_weight(net, x, edge_index)
         # save prediction results
         z.append(cur_z)
         # save the all layer weights; size of each layer: (# batches, # ROI, # outputs nodes)
         # 1 batche would be 1 time window here
-        for i, l in enumerate(cur_weights):
-            if len(convlayers) != len(cur_weights):
-                convlayers.append([np.expand_dims(l, -1)])
-            else:
-                convlayers[i].append(np.expand_dims(l, -1))
+        layers.append(cur_weights)
     z = np.concatenate(z, axis=-1)
-    cleaned_conv = (
-        []
-    )  # each item: (# batches, # ROI, # outputs nodes, # horizon)
-    for l in convlayers:
-        cleaned_conv.append(np.concatenate(l, -1))
+    # each item under the key: (# batches, # ROI, # outputs nodes, # horizon)
+    restructure = {}
+    for horizon_weights in layers:
+        for key in horizon_weights:
+            if not restructure.get(key):
+                restructure[key] = []
+            for i, layer in enumerate(horizon_weights[key]):
+                if len(restructure[key]) != len(horizon_weights[key]):
+                    restructure[key].append([np.expand_dims(layer, -1)])
+                else:
+                    restructure[key][i].append(np.expand_dims(layer, -1))
+    del layers
+
+    layer_features = {}
+    for key in restructure:
+        for i, layer in enumerate(restructure[key]):
+            layer_features[f"{key}{i+1}"] = np.concatenate(layer, -1)
+    del restructure
 
     # basic validation
     ts_r2 = []
@@ -108,14 +120,14 @@ def predict_horizon(
             r2_score((y[:, :, h]), z[:, :, h], multioutput="raw_values")
         )
     ts_r2 = np.swapaxes(np.array(ts_r2), 0, -1)
-    return (y, z, cleaned_conv, ts_r2)
+    return (y, z, layer_features, ts_r2)
 
 
 def save_extracted_feature(
     ts: np.ndarray,
     y: np.ndarray,
     z: np.ndarray,
-    convlayers: List[np.ndarray],
+    layer_features: List[np.ndarray],
     ts_r2: np.ndarray,
     f: h5py.File,
     dset_path: str,
@@ -139,19 +151,16 @@ def save_extracted_feature(
     f[new_ds_path] = np.moveaxis(np.array(z_conns), 0, -1)
 
     # pooling over output of conv layers
-    _, n_parcel, n_output_nodes, _ = convlayers[0].shape
-    pooling_funcs = generate_pooling_funcs(
-        n_parcel, n_output_nodes, kernel_time=1
-    )
-    for i, layer in enumerate(convlayers):
-        new_ds_path = dset_path.replace(
-            "timeseries", f"layer-{i+1}_gcnweights"
+    for key, layer in layer_features.items():
+        n_time_points, n_parcel, n_output_nodes, _ = layer.shape
+        pooling_funcs = generate_pooling_funcs(
+            n_parcel, kernel_nodes=1, kernel_time=n_time_points
         )
+        new_ds_path = dset_path.replace("timeseries", f"layer-{key}_weights")
         f[new_ds_path] = layer  # save all layers
 
         # pool over output nodes
         layer_pooled_ts = {method_name: [] for method_name in pooling_funcs}
-        layer_pooled_conn = {method_name: [] for method_name in pooling_funcs}
         for h in range(horizon):
             layer_h = np.moveaxis(
                 layer[:, :, :, h], 0, -1
@@ -161,8 +170,6 @@ def save_extracted_feature(
                     torch.tensor(layer_h).unsqueeze(0)
                 )
                 layer_pooled_ts[method_name].append(d)
-                d_conn = conn.fit_transform([d.T])[0]
-                layer_pooled_conn[method_name].append(d_conn)
 
         for method_name in pooling_funcs:
             # concatenate along the horizon
@@ -173,19 +180,10 @@ def save_extracted_feature(
                 0,
                 1,
             )
-            layer_pooled_conn[method_name] = np.concatenate(
-                np.expand_dims(layer_pooled_conn[method_name], -1), axis=-1
-            )
 
             # save
             new_ds_path = dset_path.replace(
                 "timeseries",
-                f"layer-{i+1}_pooling-{method_name}_gcnweights_timeseries",
+                f"layer-{key}_pooling-{method_name}_weights",
             )
             f[new_ds_path] = layer_pooled_ts[method_name]
-
-            new_ds_path = dset_path.replace(
-                "timeseries",
-                f"layer-{i+1}_pooling-{method_name}_gcnweights_connectome",
-            )
-            f[new_ds_path] = layer_pooled_conn[method_name]
