@@ -1,11 +1,12 @@
 from typing import Any, Dict, List, Optional, Tuple
 
+import comet_ml
 import hydra
 import lightning as L
 import rootutils
 import torch
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
-from lightning.pytorch.loggers import Logger
+from lightning.pytorch.loggers import CometLogger, Logger
 from omegaconf import DictConfig
 
 torch._dynamo.config.suppress_errors = True  # work around for triton issue
@@ -96,6 +97,19 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         trainer.fit(
             model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path")
         )
+
+    if any(isinstance(lg, CometLogger) for lg in logger):
+        log.info("Save model!")
+        last_model_path = None
+        if trainer.checkpoint_callback is not None:
+            best_model_path = trainer.checkpoint_callback.best_model_path
+            last_model_path = trainer.checkpoint_callback.last_model_path
+
+        trainer.logger.experiment.log_model("best-model", best_model_path)
+
+        # Also log the `ModelCheckpoint`'s last checkpoint, if it is configured to save one
+        if last_model_path:
+            trainer.logger.experiment.log_model("last-model", last_model_path)
 
     train_metrics = trainer.callback_metrics
 

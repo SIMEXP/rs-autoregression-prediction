@@ -36,7 +36,7 @@ def extras(cfg: DictConfig) -> None:
         "SLURM_JOB_ID" in os.environ
         and os.environ["SLURM_JOB_NAME"] != "interactive"
     ) and not cfg.get("prepare_data"):
-        log.info("Slrum job. Use SLRUM_TMP_DIR as data dir")
+        log.info("Slurm job. Use SLRUM_TMP_DIR as data dir")
         cfg.paths.data_dir = f'{os.environ["SLURM_TMPDIR"]}'
 
     # disable python warnings

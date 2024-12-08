@@ -8,6 +8,7 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import rootutils
 import torch
 import torch.nn as nn
 from joblib import Parallel, delayed
@@ -49,6 +50,8 @@ from src.data.utils import load_data
 from src.models.components.hooks import predict_horizon, save_extracted_feature
 from src.models.plotting import plot_horizon
 from tqdm import tqdm
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 CKPT_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/checkpoints/epoch=059-val_r2_best=0.167.ckpt"
 CFG_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/csv/version_0/hparams.yaml"
@@ -97,6 +100,7 @@ def measure_name_validator(measure):
 
 def prepare_model_data(
     cfg,
+    data_dir,
     measure: str = "connectome",
     phenotype: str = "sex",
     sample: float = 0.1,
@@ -122,11 +126,11 @@ def prepare_model_data(
 
     if phenotype in ["sex", "age"]:
         dset_path = load_ukbb_sets(
-            cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
+            data_dir, cfg.seed, cfg.data.atlas, stage="test"
         )
     else:
         dset_path = load_ukbb_sets(
-            cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage=phenotype
+            data_dir, cfg.seed, cfg.data.atlas, stage=phenotype
         )
     n_subject = int(sample * len(dset_path))
     dset_path = dset_path[:n_subject]
@@ -159,7 +163,20 @@ def load_phenotype(path: Union[Path, str]) -> pd.DataFrame:
     df = pd.read_csv(
         path,
         sep="\t",
-        dtype={"participant_id": str, "age": float, "sex": int, "site": str},
+        dtype={
+            "participant_id": str,
+            "age": float,
+            "sex": int,
+            "site": str,
+            "DEP": int,
+            "ALCO": int,
+            "EPIL": int,
+            "MS": int,
+            "PARK": int,
+            "BIPOLAR": int,
+            "ADD": int,
+            "SCZ": int,
+        },
     )
     df = df.set_index("participant_id")
     return df
@@ -191,12 +208,13 @@ def load_training_data(all_labels, all_brain, phenotype):
 
 
 def train(x, y, i, train_index, test_index, phenotype, measure, sample, clf):
+    clf.fit(x[train_index, :], y[train_index])
+    y_pred = clf.predict(x[test_index, :])
+
     if phenotype == "age":
-        clf.fit(x[train_index, :], y[train_index, :])
-        y_pred = clf.predict(x[test_index, :])
-        mse = mean_squared_error(y[test_index, :], y_pred)
-        mae = mean_absolute_error(y[test_index, :], y_pred)
-        r2 = r2_score(y[test_index, :], y_pred)
+        mse = mean_squared_error(y[test_index], y_pred)
+        mae = mean_absolute_error(y[test_index], y_pred)
+        r2 = r2_score(y[test_index], y_pred)
         print(
             f"{phenotype} metric: {measure} MSE = {mse}, MAE = {mae}, "
             f"r2 = {r2} N={y.shape[0]}"
@@ -210,9 +228,7 @@ def train(x, y, i, train_index, test_index, phenotype, measure, sample, clf):
             "mae": mae,
             "r2": r2,
         }
-    elif phenotype == "sex":
-        clf.fit(x[train_index, :], y[train_index])
-        y_pred = clf.predict(x[test_index, :])
+    else:
         metric = {
             "sample": sample,
             "fold": i + 1,
@@ -234,43 +250,36 @@ def train(x, y, i, train_index, test_index, phenotype, measure, sample, clf):
 def main(cfg):
     measure = cfg.measure
     phenotype = cfg.phenotype
-    sample = cfg.phenotype
+    sample = cfg.proportion_sample
     model_cfg = OmegaConf.load(cfg.model_cfg)
 
     results = []
-    for sample in [1.0, 0.75, 0.5, 0.25, 0.1, 0.05]:
-        all_labels = prepare_model_data(
-            model_cfg, measure, phenotype, sample
-        )  # always use sex or age to load the full set
-        all_brain = load_brain_features(cfg.feature_path, all_labels, measure)
-        assert all_labels.shape[0] == all_brain.shape[0]
-        x, y = load_training_data(all_labels, all_brain, phenotype=phenotype)
-        if phenotype == "age":
-            clf = Lasso(alpha=0.1, random_state=model_cfg.seed)
-        else:
-            clf = LogisticRegression(
-                penalty="l2",
-                class_weight="balanced",
-                random_state=model_cfg.seed,
-            )
-        rs = ShuffleSplit(n_splits=5, test_size=0.2)
-        current = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
-            delayed(train)(
-                x,
-                y,
-                i,
-                train_index,
-                test_index,
-                phenotype,
-                measure,
-                sample,
-                clf,
-            )
-            for i, (train_index, test_index) in enumerate(rs.split(x))
+    all_labels = prepare_model_data(
+        cfg=model_cfg,
+        data_dir=cfg.paths.data_dir,
+        measure=measure,
+        phenotype=phenotype,
+        sample=sample,
+    )  # always use sex or age to load the full set
+    all_brain = load_brain_features(cfg.feature_path, all_labels, measure)
+    assert all_labels.shape[0] == all_brain.shape[0]
+    x, y = load_training_data(all_labels, all_brain, phenotype=phenotype)
+    if phenotype == "age":
+        clf = Lasso(alpha=0.1, random_state=model_cfg.seed)
+    else:
+        clf = LogisticRegression(
+            penalty="l2", class_weight="balanced", random_state=model_cfg.seed
         )
-        results += current
+    rs = ShuffleSplit(n_splits=5, test_size=0.2)
+    results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
+        delayed(train)(
+            x, y, i, train_index, test_index, phenotype, measure, sample, clf
+        )
+        for i, (train_index, test_index) in enumerate(rs.split(x))
+    )
     pd.DataFrame.from_dict(results, orient="columns").to_csv(
-        f"downstream_{phenotype}_{measure}.tsv", sep="\t"
+        f"outputs/downstream/downstream_{phenotype}_{measure}_{sample*100}.tsv",
+        sep="\t",
     )
 
 

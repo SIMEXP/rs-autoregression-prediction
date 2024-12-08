@@ -18,6 +18,8 @@ train: true
 
 test: true
 
+proportion_sample: 1.0
+
 trainer:
   min_epochs: 1
   max_epochs: 20

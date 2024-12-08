@@ -3,6 +3,7 @@ Extract features from the model.
 If model was trained on gpu, this script should
 be run on a machine with a gpu.
 """
+import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 import h5py
@@ -11,8 +12,6 @@ import lightning as L
 import numpy as np
 import rootutils
 import torch
-from lightning import Callback, LightningDataModule, LightningModule, Trainer
-from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 from tqdm import tqdm
 
@@ -40,19 +39,13 @@ from src.data.ukbb_datamodule import load_ukbb_sets
 from src.data.utils import load_data
 from src.models.components.hooks import predict_horizon, save_extracted_feature
 from src.models.utils import load_model_from_ckpt
-from src.utils import (
-    RankedLogger,
-    extras,
-    get_metric_value,
-    instantiate_callbacks,
-    instantiate_loggers,
-    log_hyperparameters,
-    task_wrapper,
-)
+from src.utils import RankedLogger, extras, task_wrapper
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
 
+# need to implement
+# https://docs.h5py.org/en/latest/mpi.html
 @task_wrapper
 def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -75,6 +68,8 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     )
 
     log.info("Extract features.")
+    # save to data dir
+    # output_extracted_feat: str = f"{cfg.paths.data_dir}/features.h5"
     output_extracted_feat: str = f"{cfg.paths.output_dir}/features.h5"
 
     f: h5py.File = h5py.File(output_extracted_feat, "a")
@@ -102,6 +97,18 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         del ts_r2
     log.info("Extraction completed.")
     f.close()
+    log.info("Copy to project.")
+    # # copy from data dir to output dir
+    output_extracted_feat: str = f"{cfg.paths.output_dir}/features.h5"
+    subprocess.run(
+        [
+            "rsync",
+            "-tv",
+            "--info=progress2",
+            output_extracted_feat,
+            f"{cfg.paths.output_dir}/features.h5",
+        ]
+    )
     return None, None  # competibility with task wrapper
 
 

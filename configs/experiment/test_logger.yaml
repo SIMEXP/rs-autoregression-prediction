@@ -5,27 +5,30 @@
 
 defaults:
   - override /model: chebnet_default
-  - override /callbacks: default
+  - override /callbacks: scaling
   - override /trainer: gpu
+  - override /logger: comet
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
+task_name: debug
 tags: [ukbb, gcn, dev]
-
+train: true
+test: true
 seed: 1
+proportion_sample: 5
 
 trainer:
   min_epochs: 1
-  max_epochs: 3
+  max_epochs: 5
+  limit_train_batches: ${proportion_sample}
+  limit_val_batches: ${proportion_sample}
 
 data:
-  num_workers: 9
+  num_workers: 8
   pin_memory: true
 
 logger:
-  csv:
-    prefix: ${tags[0]}
-
-model:
-  compile: true
+  comet:
+    project_name: "test"

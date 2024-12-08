@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - paths: default
+  - hydra: default
+  - local: default
+
+task_name: downstream
+proportion_sample: 0.5
+measure: "layer-NonsharedFC1_pooling-average_weights"
+phenotype: "sex"
+model_cfg: null
+feature_path: null

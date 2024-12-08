@@ -46,6 +46,9 @@ train: false
 # lightning chooses best weights based on the metric specified in checkpoint callback
 test: false
 
+# Proportion of sample for training and validation.
+proportion_sample: 1.0
+
 # simply provide checkpoint path to resume training
 ckpt_path: null
 

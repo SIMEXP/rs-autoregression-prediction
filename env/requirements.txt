@@ -13,7 +13,7 @@ hydra-colorlog==1.2.0
 hydra-optuna-sweeper==1.2.0
 
 # --------- loggers --------- #
-wandb
+wandb==0.17.9
 wandb-osh[lightning]
 
 # --------- others --------- #
