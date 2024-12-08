@@ -2,145 +2,130 @@
 Extract features from the model.
 If model was trained on gpu, this script should
 be run on a machine with a gpu.
-```
-python src/extract.py --multirun \
-    model_path=outputs/ccn2024/model/model.pkl
-```
 """
-import json
-import logging
-import os
-from datetime import datetime
-from pathlib import Path
+import subprocess
+from typing import Any, Dict, List, Optional, Tuple
 
 import h5py
 import hydra
+import lightning as L
+import numpy as np
+import rootutils
 import torch
-from fmri_autoreg.models.predict_model import predict_horizon
-from fmri_autoreg.tools import chebnet_argument_resolver, load_model
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from tqdm import tqdm
 
-log = logging.getLogger(__name__)
-LABEL_DIR = Path(__file__).parents[1] / "outputs" / "sample_for_pretraining"
+torch._dynamo.config.suppress_errors = True  # work around for triton issue
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+# ------------------------------------------------------------------------------------ #
+# the setup_root above is equivalent to:
+# - adding project root dir to PYTHONPATH
+#       (so you don't need to force user to install project as a package)
+#       (necessary before importing any local modules e.g. `from src import utils`)
+# - setting up PROJECT_ROOT environment variable
+#       (which is used as a base for paths in "configs/paths/default.yaml")
+#       (this way all filepaths are the same no matter where you run the code)
+# - loading environment variables from ".env" in root dir
+#
+# you can remove it if you:
+# 1. either install project as a package or move entry files to project root dir
+# 2. set `root_dir` to "." in "configs/paths/default.yaml"
+#
+# more info: https://github.com/ashleve/rootutils
+# ------------------------------------------------------------------------------------ #
+
+from src.data.ukbb_datamodule import load_ukbb_sets
+from src.data.utils import load_data
+from src.models.components.hooks import predict_horizon, save_extracted_feature
+from src.models.utils import load_model_from_ckpt
+from src.utils import RankedLogger, extras, task_wrapper
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="extract")
-def main(params: DictConfig) -> None:
-    """Train model using parameters dict and save results."""
+# need to implement
+# https://docs.h5py.org/en/latest/mpi.html
+@task_wrapper
+def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    I can't figure out how to plug this in to pytorch prediction
+    hook so here's a stand alone script.
+    """
 
-    from src.model.extract_features import (
-        extract_convlayers,
-        pooling_convlayers,
+    if cfg.get("seed"):
+        L.seed_everything(cfg.seed, workers=True)
+    assert cfg.ckpt_path
+
+    log.info(f"Instantiating pytorch model <{cfg.model.net._target_}>")
+    net: torch.nn.Module = load_model_from_ckpt(
+        cfg.ckpt_path, hydra.utils.instantiate(cfg.model.net)
+    )
+    net.eval()  # put in evaluation mode
+    log.info("Loading test set subjects")
+    conn_dset_paths: List = load_ukbb_sets(
+        cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
     )
 
-    model_path = Path(params["model_path"])
-    model_config = OmegaConf.load(model_path.parent / ".hydra/config.yaml")
-    params = OmegaConf.merge(model_config, params)
+    log.info("Extract features.")
+    # save to data dir
+    # output_extracted_feat: str = f"{cfg.paths.data_dir}/features.h5"
+    output_extracted_feat: str = f"{cfg.paths.output_dir}/features.h5"
 
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    log.info(f"Working on {device}.")
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    output_dir = Path(output_dir)
-    log.info(f"Current working directory : {os.getcwd()}")
-    log.info(f"Output directory  : {output_dir}")
-    if isinstance(params["horizon"], int):
-        horizons = [params["horizon"]]
-    else:
-        horizons = OmegaConf.to_object(params["horizon"])
-    log.info(f"predicting horizon: {horizons}")
-
-    # load test set subject path from the training
-    with open(
-        LABEL_DIR
-        / f"seed-{params['random_state']}"
-        / f"sample_seed-{params['random_state']}_split.json",
-        "r",
-    ) as f:
-        subj = json.load(f)
-
-    subj_list = subj[str(params["data"]["n_embed"])]["test"]
-    model_params = chebnet_argument_resolver(
-        OmegaConf.to_container(params["model"])
-    )
-    log.info("Load model")
-    model = load_model(model_path)
-    if isinstance(model, torch.nn.Module):
-        model.to(torch.device(device)).eval()
-
-    for horizon in horizons:
-        output_horizon_path = (
-            Path(output_dir) / f"feature_horizon-{horizon}.h5"
+    f: h5py.File = h5py.File(output_extracted_feat, "a")
+    for dset_path in tqdm(conn_dset_paths):
+        data: np.ndarray = load_data(cfg.data.connectome_file, dset_path)[0]
+        # make labels per subject
+        y, z, convlayers, ts_r2 = predict_horizon(
+            cfg.horizon,
+            net,
+            data,
+            edge_index=torch.tensor(
+                hydra.utils.instantiate(cfg.model.edge_index)
+            ),
+            timeseries_window_stride_lag=cfg.data.timeseries_window_stride_lag,
+            timeseries_decimate=cfg.data.timeseries_decimate,
         )
-        with h5py.File(output_horizon_path, "a") as f:
-            f.attrs["complied_date"] = str(datetime.today())
-            f.attrs["based_on_model"] = str(model_path)
-            f.attrs["horizon"] = horizon
 
-        log.info(f"Predicting t+{horizon} of each subject")
-        for h5_dset_path in tqdm(subj_list):
-            # get the prediction of t+1
-            r2, Z, Y = predict_horizon(
-                model=model,
-                seq_length=params["data"]["seq_length"],
-                horizon=horizon,
-                data_file=params["data"]["data_file"],
-                dset_path=h5_dset_path,
-                batch_size=None,
-                stride=params["data"]["time_stride"],
-            )
-            # save the original output to a h5 file
-            with h5py.File(output_horizon_path, "a") as f:
-                for value, key in zip([r2, Z, Y], ["r2map", "Z", "Y"]):
-                    new_ds_path = h5_dset_path.replace("timeseries", key)
-                    f[new_ds_path] = value
-
-    output_conv_path = Path(output_dir) / "feature_convlayers.h5"
-    # save the model parameters in the h5 files
-    with h5py.File(output_conv_path, "a") as f:
-        f.attrs["complied_date"] = str(datetime.today())
-        f.attrs["based_on_model"] = str(model_path)
-
-    log.info("extract convo layers")
-    model = load_model(model_path)
-    if isinstance(model, torch.nn.Module):
-        model.to(torch.device(device)).eval()
-    for h5_dset_path in tqdm(subj_list):
-        convlayers = extract_convlayers(
-            data_file=params["data"]["data_file"],
-            h5_dset_path=h5_dset_path,
-            model=model,
-            seq_length=params["data"]["seq_length"],
-            time_stride=params["data"]["time_stride"],
-            lag=params["data"]["lag"],
+        # save to h5 file, create more features
+        save_extracted_feature(
+            data[::4], y, z, convlayers, ts_r2, f, dset_path
         )
-        # save the original output to a h5 file
-        with h5py.File(output_conv_path, "a") as f:
-            new_ds_path = h5_dset_path.replace("timeseries", "convlayers")
-            f[new_ds_path] = convlayers.numpy()
-        convlayers_F = [
-            int(F)
-            for i, F in enumerate(model_params["FK"].split(","))
-            if i % 2 == 0
-        ]
-        # get the pooling features of the assigned layer
-        for method in ["average", "max", "std", "1dconv"]:
-            features = pooling_convlayers(
-                convlayers=convlayers,
-                pooling_methods=method,
-                pooling_target="parcel",
-                layer_index=params["convlayer_index"],
-                layer_structure=convlayers_F,
-            )
-            # save the original output to a h5 file
-            with h5py.File(output_conv_path, "a") as f:
-                new_ds_path = h5_dset_path.replace("timeseries", method)
-                f[new_ds_path] = features
-
-    # save the original output to a h5 file
-    with h5py.File(output_conv_path, "a") as f:
-        f.attrs["convolution_layers_F"] = convlayers_F
+        del y
+        del z
+        del convlayers
+        del ts_r2
     log.info("Extraction completed.")
+    f.close()
+    log.info("Copy to project.")
+    # # copy from data dir to output dir
+    output_extracted_feat: str = f"{cfg.paths.output_dir}/features.h5"
+    subprocess.run(
+        [
+            "rsync",
+            "-tv",
+            "--info=progress2",
+            output_extracted_feat,
+            f"{cfg.paths.output_dir}/features.h5",
+        ]
+    )
+    return None, None  # competibility with task wrapper
+
+
+@hydra.main(
+    version_base="1.3", config_path="../configs", config_name="eval.yaml"
+)
+def main(cfg: DictConfig) -> Optional[float]:
+    """Main entry point for training.
+
+    :param cfg: DictConfig configuration composed by Hydra.
+    :return: Optional[float] with optimized metric value.
+    """
+    # apply extra utilities
+    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+    extras(cfg)
+    # extract features
+    extract(cfg)
 
 
 if __name__ == "__main__":

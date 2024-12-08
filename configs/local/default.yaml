@@ -1,0 +1,5 @@
+# @package _global_
+
+paths:
+  data_dir: ${oc.env:USER_PROJECT_PATH}/inputs/data
+  log_dir: ${oc.env:USER_PROJECT_PATH}/outputs/autoreg/logs

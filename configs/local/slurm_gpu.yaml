@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - default
+  - override /hydra/launcher: submitit_slurm
+
+hydra:
+  launcher:
+    timeout_min: 180
+    cpus_per_task: 5
+    gpus_per_task: 1
+    tasks_per_node: 1
+    mem_gb: 8
+    nodes: 1
+    account: ${oc.env:SLURM_COMPUTE_ACCOUNT}
+    additional_parameters:
+      { mail-user: "${oc.env:SLACK_EMAIL_BOT}", mail-type: ALL }
+    array_parallelism: 256
+    setup:
+      - module load httpproxy
+      - export HYDRA_FULL_ERROR=1
+      - export NCCL_DEBUG=INFO
+      - rsync -tv --info=progress2 ${oc.env:USER_PROJECT_PATH}/inputs/data/./atlas-${data.atlas[0]}${data.atlas[1]}_decimate-${data.timeseries_decimate}_windowsize-${data.timeseries_window_stride_lag[0]}_stride-${data.timeseries_window_stride_lag[1]}_lag-${data.timeseries_window_stride_lag[2]}_seed-${seed}_data.h5 $SLURM_TMPDIR/atlas-${data.atlas[0]}${data.atlas[1]}_decimate-${data.timeseries_decimate}_windowsize-${data.timeseries_window_stride_lag[0]}_stride-${data.timeseries_window_stride_lag[1]}_lag-${data.timeseries_window_stride_lag[2]}_seed-${seed}_data.h5
+      - rsync -tv --info=progress2 ${oc.env:USER_PROJECT_PATH}/inputs/data/./downstream_sample_seed-${seed}.json $SLURM_TMPDIR/downstream_sample_seed-${seed}.json

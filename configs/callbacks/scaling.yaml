@@ -1,0 +1,20 @@
+defaults:
+  - early_stopping
+  - model_summary
+  - _self_
+
+early_stopping:
+  monitor: "val/r2_best"
+  patience: 6
+  mode: "max"
+
+model_summary:
+  max_depth: -1
+
+model_checkpoint:
+  dirpath: ${paths.output_dir}/checkpoints
+  filename: "epoch{epoch:03d}-val_r2_best{val/r2_best:.3f}"
+  monitor: "val/r2_best"
+  mode: "max"
+  save_last: True
+  auto_insert_metric_name: false

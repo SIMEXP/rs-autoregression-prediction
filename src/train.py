@@ -1,188 +1,160 @@
-"""
-Example: Hyperparameter tuning with orion
-```
-python src/train.py --multirun hydra=hyperparameters
-```
+from typing import Any, Dict, List, Optional, Tuple
 
-Example: Run scaling on different number of samples for the
-model training
-```
-python src/train.py --multirun hydra=scaling \
-  ++data.proportion_sample=1,0.5,0.25,0.1
-```
-"""
-import logging
-import os
-import pickle as pk
-from pathlib import Path
-
-import h5py
+import comet_ml
 import hydra
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+import lightning as L
+import rootutils
 import torch
-from fmri_autoreg.data.load_data import get_edge_index_threshold
-from fmri_autoreg.models.train_model import train
-from fmri_autoreg.tools import chebnet_argument_resolver
-from omegaconf import DictConfig, OmegaConf
-from seaborn import lineplot
-from torchinfo import summary
+from lightning import Callback, LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.loggers import CometLogger, Logger
+from omegaconf import DictConfig
 
-LABEL_DIR = Path(__file__).parents[1] / "outputs" / "sample_for_pretraining"
+torch._dynamo.config.suppress_errors = True  # work around for triton issue
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+# ------------------------------------------------------------------------------------ #
+# the setup_root above is equivalent to:
+# - adding project root dir to PYTHONPATH
+#       (so you don't need to force user to install project as a package)
+#       (necessary before importing any local modules e.g. `from src import utils`)
+# - setting up PROJECT_ROOT environment variable
+#       (which is used as a base for paths in "configs/paths/default.yaml")
+#       (this way all filepaths are the same no matter where you run the code)
+# - loading environment variables from ".env" in root dir
+#
+# you can remove it if you:
+# 1. either install project as a package or move entry files to project root dir
+# 2. set `root_dir` to "." in "configs/paths/default.yaml"
+#
+# more info: https://github.com/ashleve/rootutils
+# ------------------------------------------------------------------------------------ #
+
+from src.utils import (
+    RankedLogger,
+    extras,
+    get_metric_value,
+    instantiate_callbacks,
+    instantiate_loggers,
+    log_hyperparameters,
+    task_wrapper,
+)
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="train")
-def main(params: DictConfig) -> None:
-    """Train model using parameters dict and save results."""
-    # import local library here because sumbitit and hydra being weird
-    # if not interactive session of slurm, import submit it
-    if (
-        "SLURM_JOB_ID" in os.environ
-        and os.environ["SLURM_JOB_NAME"] != "interactive"
-    ):
-        pid = os.getpid()
-        # A logger for this file
-        log = logging.getLogger(f"Process ID {pid}")
-        log.info(f"Process ID {pid}")
-        tng_data_h5 = (
-            Path(os.environ["SLURM_TMPDIR"])
-            / f"data_{os.environ['SLURM_JOB_ID']}.h5"
-        )
-    else:
-        log = logging.getLogger(__name__)
-        tng_data_h5 = list(
-            (LABEL_DIR / f"seed-{params['random_state']}").glob("*train.h5")
-        )[
-            0
-        ]  # will be shuffled after loading
+@task_wrapper
+def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
+    training.
 
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    log.info(f"Current working directory : {os.getcwd()}")
-    log.info(f"Output directory  : {output_dir}")
+    This method is wrapped in optional @task_wrapper decorator, that controls the behavior during
+    failure. Useful for multiruns, saving info about the crash, etc.
 
-    # organise parameters
-    compute_edge_index = "Chebnet" in params["model"]["model"]
-    log.info(f"Random seed {params['random_state']}")
-    log.info(params["model"]["model"])
-    params["model"]["nb_epochs"] = int(params["model"]["nb_epochs"])
+    :param cfg: A DictConfig configuration composed by Hydra.
+    :return: A tuple with metrics and dict with all instantiated objects.
+    """
+    # set seed for random number generators in pytorch, numpy and python.random
+    if cfg.get("seed"):
+        L.seed_everything(cfg.seed, workers=True)
 
-    # flatten the parameters
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    train_param = {**params["model"], **params["data"]}
-    train_param["num_workers"] = params["num_workers"]
-    train_param["torch_device"] = device
-    train_param["random_state"] = params["random_state"]
-    if "checkpoints" in params:
-        train_param["checkpoints"] = params["checkpoints"]
-    log.info(f"Working on {device}.")
+    log.info(f"Instantiating datamodule <{cfg.data._target_}>")
+    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
 
-    # get path data
-    try:
-        with h5py.File(tng_data_h5, "r") as h5file:
-            connectome = h5file[f"n_embed-{train_param['n_embed']}"]["train"][
-                "connectome"
-            ][:]
-    except OSError:
-        log.error(f"File {tng_data_h5} corrupted.")
-        return 1
+    if cfg.get("prepare_data"):
+        datamodule.prepare_data()
+        log.info("Finishing...")
+        return None, None
 
-    # get edge index
-    edge_index = get_edge_index_threshold(
-        connectome, train_param["edge_index_thres"]
+    log.info(f"Instantiating model <{cfg.model._target_}>")
+    model: LightningModule = hydra.utils.instantiate(cfg.model)
+
+    log.info("Instantiating callbacks...")
+    callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+
+    log.info("Instantiating loggers...")
+    logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
+
+    log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
+    trainer: Trainer = hydra.utils.instantiate(
+        cfg.trainer, callbacks=callbacks, logger=logger
     )
-    log.info("Loaded connectome.")
-    train_data = (tng_data_h5, edge_index)
-    del edge_index
 
-    with h5py.File(tng_data_h5, "r") as h5file:
-        n_tng_inputs = h5file[f"n_embed-{train_param['n_embed']}"]["train"][
-            "input"
-        ].shape[0]
-        n_tng_inputs *= train_param["proportion_sample"]
+    object_dict = {
+        "cfg": cfg,
+        "datamodule": datamodule,
+        "model": model,
+        "callbacks": callbacks,
+        "logger": logger,
+        "trainer": trainer,
+    }
 
-    if n_tng_inputs < train_param["batch_size"]:
-        log.info(
-            "Batch size is greater than the number of sequences. "
-            "Setting batch size to number of sequences. "
-            f"New batch size: {n_tng_inputs}. "
-            f"Old batch size: {train_param['batch_size']}."
+    if logger:
+        log.info("Logging hyperparameters!")
+        log_hyperparameters(object_dict)
+
+    if cfg.get("train"):
+        log.info("Starting training!")
+        trainer.fit(
+            model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path")
         )
-        train_param["batch_size"] = n_tng_inputs
-    if compute_edge_index:  # chebnet
-        train_param = chebnet_argument_resolver(train_param)
-    # save train_param
-    with open(os.path.join(output_dir, "train_param.yaml"), "w") as f:
-        OmegaConf.save(config=train_param, f=f)
 
-    log.info("Start training.")
-    (
-        model,
-        mean_r2_tng,
-        mean_r2_val,
-        losses,
-        checkpoints,
-    ) = train(train_param, train_data, verbose=params["verbose"])
+    if any(isinstance(lg, CometLogger) for lg in logger):
+        log.info("Save model!")
+        last_model_path = None
+        if trainer.checkpoint_callback is not None:
+            best_model_path = trainer.checkpoint_callback.best_model_path
+            last_model_path = trainer.checkpoint_callback.last_model_path
 
-    # save training results
-    np.save(os.path.join(output_dir, "mean_r2_tng.npy"), mean_r2_tng)
-    np.save(os.path.join(output_dir, "mean_r2_val.npy"), mean_r2_val)
-    np.save(os.path.join(output_dir, "training_losses.npy"), losses)
-    if "checkpoints" in params:
-        # save a list of dictionaries as pd dataframe
-        checkpoints = pd.DataFrame(checkpoints)
-        checkpoints.to_csv(
-            os.path.join(output_dir, "checkpoints.tsv"), sep="\t"
-        )
-    if params["verbose"] > 3:
-        # get model info
-        with open(os.path.join(output_dir, "model_info.txt"), "w") as f:
-            model_stats = summary(model)
-            summary_str = str(model_stats)
-            f.write(summary_str)
+        trainer.logger.experiment.log_model("best-model", best_model_path)
 
-        # get model info
-        with open(
-            os.path.join(output_dir, "model_info_with_input.txt"), "w"
-        ) as f:
-            model_stats = summary(
-                model,
-                input_size=(
-                    train_param["batch_size"],
-                    train_param["n_embed"],
-                    train_param["seq_length"],
-                ),
-                col_names=[
-                    "input_size",
-                    "output_size",
-                    "num_params",
-                    "kernel_size",
-                ],
+        # Also log the `ModelCheckpoint`'s last checkpoint, if it is configured to save one
+        if last_model_path:
+            trainer.logger.experiment.log_model("last-model", last_model_path)
+
+    train_metrics = trainer.callback_metrics
+
+    if cfg.get("test"):
+        log.info("Starting testing!")
+        ckpt_path = trainer.checkpoint_callback.best_model_path
+        if ckpt_path == "":
+            log.warning(
+                "Best ckpt not found! Using current weights for testing..."
             )
-            summary_str = str(model_stats)
-            f.write(summary_str)
+            ckpt_path = None
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+        log.info(f"Best ckpt path: {ckpt_path}")
 
-    log.info(f"Mean r2 tng: {mean_r2_tng}")
-    log.info(f"Mean r2 val: {mean_r2_val}")
+    test_metrics = trainer.callback_metrics
 
-    model = model.to(device)
-    with open(os.path.join(output_dir, "model.pkl"), "wb") as f:
-        pk.dump(model, f)
+    # merge train and test metrics
+    metric_dict = {**train_metrics, **test_metrics}
 
-    # visualise training loss
-    training_losses = pd.DataFrame(losses)
-    plt.figure()
-    g = lineplot(data=training_losses)
-    g.set_title(f"Training Losses (number of inputs={n_tng_inputs})")
-    g.set_xlabel("Epoc")
-    g.set_ylabel("Loss (MSE)")
-    plt.savefig(Path(output_dir) / "training_losses.png")
+    return metric_dict, object_dict
 
-    # minimise objective for hyperparameter tuning
-    if mean_r2_val < 0 or mean_r2_val > 1:
-        return 1  # invalid r2 score means bad fit
-    else:
-        return 1 - mean_r2_val
+
+@hydra.main(
+    version_base="1.3", config_path="../configs", config_name="train.yaml"
+)
+def main(cfg: DictConfig) -> Optional[float]:
+    """Main entry point for training.
+
+    :param cfg: DictConfig configuration composed by Hydra.
+    :return: Optional[float] with optimized metric value.
+    """
+    # apply extra utilities
+    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+    extras(cfg)
+
+    # train the model
+    metric_dict, _ = train(cfg)
+
+    # safely retrieve metric value for hydra-based hyperparameter optimization
+    metric_value = get_metric_value(
+        metric_dict=metric_dict, metric_name=cfg.get("optimized_metric")
+    )
+
+    # return optimized metric
+    return metric_value
 
 
 if __name__ == "__main__":

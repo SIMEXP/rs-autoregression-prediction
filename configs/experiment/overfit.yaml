@@ -1,0 +1,47 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=overfit
+
+defaults:
+  - override /callbacks: default
+  - override /trainer: gpu
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: [ukbb, gcn, dev]
+
+seed: 1
+
+trainer:
+  min_epochs: 2
+  max_epochs: 40
+
+data:
+  batch_size: 128
+  proportion_sample: 1.0
+  num_workers: 4
+  pin_memory: true
+
+logger:
+  csv:
+    prefix: ${tags[0]}
+
+model:
+  net:
+    connectome_threshold: 0.7
+    FK: 16,6,16,6,8,3,8,3,8,3,4,2
+    M: 8,1
+    dropout: 0
+    bn_momentum: 0.1
+  optimizer:
+    lr: 0.01
+    weight_decay: 0.0
+  scheduler:
+    factor: 0.1
+    patience: 10
+  compile: false # hasn't been fixed yet
+
+extras:
+  print_config: false

@@ -204,7 +204,7 @@ def load_ukbb_dset_path(
 
     if segment == -1:
         segment = [1, 2, 3, 4]
-    if segment == 0:
+    elif segment == 0:
         segment = [None]
     elif segment <= 4:
         segment = [segment]
