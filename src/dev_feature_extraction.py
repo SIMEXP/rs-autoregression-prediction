@@ -22,8 +22,8 @@ from src.models.components.chebnet import NonsharedFC
 from src.models.components.hooks import predict_horizon, save_extracted_feature
 from src.models.plotting import plot_horizon
 
-CKPT_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/checkpoints/epoch=059-val_r2_best=0.167.ckpt"
-CFG_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/csv/version_0/hparams.yaml"
+CKPT_PATH = "outputs/model_registery/baseline.ckpt"
+CFG_PATH = "outputs/model_registery/baseline.yaml"
 MIST197_PCC = 30  # PCC in mist 197: 30
 PCC_COORDS = (0, -45, 20)
 output_extracted_feat = "outputs/test.h5"
@@ -72,9 +72,9 @@ y, z, layer_features, ts_r2 = predict_horizon(
 )
 
 # save to h5 file, create more features
-f = h5py.File(output_extracted_feat, "w")
-save_extracted_feature(data[::4], y, z, layer_features, ts_r2, f, dset_path)
-f.close()
+# f = h5py.File(output_extracted_feat, "w")
+# save_extracted_feature(data[::4], y, z, layer_features, ts_r2, f, dset_path)
+# f.close()
 
 # # just plot everything with PCC
 # from nilearn.connectome import ConnectivityMeasure

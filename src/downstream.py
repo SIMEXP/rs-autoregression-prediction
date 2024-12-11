@@ -53,11 +53,16 @@ from tqdm import tqdm
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-CKPT_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/checkpoints/epoch=059-val_r2_best=0.167.ckpt"
-CFG_PATH = "outputs/autoreg/logs/train/multiruns/2024-11-08_08-40-38/0/csv/version_0/hparams.yaml"
-CKPT_FEAT = (
-    "outputs/autoreg/logs/eval/multiruns/2024-11-27_22-16-24/0/features.h5"
-)
+# CKPT_PATH = "outputs/model_registery/current_best.ckpt"
+# CFG_PATH = "outputs/model_registery/current_best.yaml"
+# CKPT_FEAT = (
+#     "outputs/features/current_best/features.h5"
+# )
+# CKPT_PATH = "outputs/model_registery/baseline.ckpt"
+# CFG_PATH = "outputs/model_registery/baseline.yaml"
+# CKPT_FEAT = (
+#     "outputs/features/baseline/features.h5"
+# )
 
 measure2data = {
     "connectome_baseline": "connectome",
@@ -252,6 +257,8 @@ def main(cfg):
     phenotype = cfg.phenotype
     sample = cfg.proportion_sample
     model_cfg = OmegaConf.load(cfg.model_cfg)
+    output_dir_name = cfg.model_cfg.split("/")[-1].split(".")[0]
+    Path(f"outputs/downstream/{output_dir_name}").mkdir(exist_ok=True)
 
     results = []
     all_labels = prepare_model_data(
@@ -278,7 +285,7 @@ def main(cfg):
         for i, (train_index, test_index) in enumerate(rs.split(x))
     )
     pd.DataFrame.from_dict(results, orient="columns").to_csv(
-        f"outputs/downstream/downstream_{phenotype}_{measure}_{sample*100}.tsv",
+        f"outputs/downstream/{output_dir_name}/downstream_{phenotype}_{measure}_{sample*100}.tsv",
         sep="\t",
     )
 

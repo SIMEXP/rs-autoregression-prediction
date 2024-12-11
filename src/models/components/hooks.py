@@ -5,16 +5,20 @@ import lightning as L
 import numpy as np
 import torch
 import torch.nn as nn
+from lightning import LightningModule
 from nilearn.connectome import ConnectivityMeasure
 from sklearn.metrics import r2_score
 from src.data.utils import load_data, make_sequence_single_subject
 from src.models.components.chebnet import NonsharedFC
 from src.models.components.pooling import StdPool2d
+from src.utils import RankedLogger
 from torch_geometric.nn import ChebConv
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 def extract_output_weight(
-    model: nn.Module, x: torch.Tensor, edge_index: torch.Tensor
+    model: LightningModule, x: torch.Tensor, edge_index: torch.Tensor
 ):
     weights = {}
     hooks = []
@@ -22,19 +26,21 @@ def extract_output_weight(
     def hook_fn(layer, input, output):
         if not weights.get(layer._get_name()):
             weights[layer._get_name()] = []
-        return weights[layer._get_name()].append(output.detach().numpy())
-
-    for _, module in model.named_modules():
-        if isinstance(module, ChebConv) or isinstance(module, NonsharedFC):
-            hook = module.register_forward_hook(hook_fn)
-            hooks.append(hook)
+        # assigning to a variable will create a copy and detach from graph...
+        # I hope
+        weight = output.detach().cpu().numpy()
+        return weights[layer._get_name()].append(weight)
 
     with torch.no_grad():
-        z = model.predict(x, edge_index)
+        for _, module in model.named_modules():
+            if isinstance(module, ChebConv) or isinstance(module, NonsharedFC):
+                hook = module.register_forward_hook(hook_fn)
+                hooks.append(hook)
+        z = model(x, edge_index).detach().cpu().numpy()
 
-    for hook in hooks:
-        hook.remove()
-    z = np.expand_dims(z.detach().numpy(), axis=-1)
+        for hook in hooks:
+            hook.remove()
+        z = np.expand_dims(z, axis=-1)
     return z, weights
 
 
@@ -65,12 +71,21 @@ def generate_pooling_funcs(n_parcel, kernel_nodes, kernel_time=1):
 
 def predict_horizon(
     horizon: int,
-    net: torch.nn.Module,
+    model: torch.nn.Module,
     data: np.ndarray,
     edge_index: torch.Tensor,
     timeseries_window_stride_lag: Tuple[int, int, int],
     timeseries_decimate: int = 4,
+    f: h5py.File = None,
+    dset_path: str = None,
 ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray], np.ndarray]:
+    if f is None != dset_path is None:
+        log.error(
+            "If you want to save the weights, please pass a file "
+            "handler (f) and the h5 dataset path."
+        )
+        raise ValueError
+
     w, s, _ = timeseries_window_stride_lag
     m = timeseries_decimate  # decimate factor
     history, _ = make_sequence_single_subject(data, m, w + horizon, s, 0)
@@ -84,15 +99,18 @@ def predict_horizon(
             # this is the simplest form of AR forecasting
             # move window forward by one, append predicted time point
             # this is the new input to predict t+h
-            x = np.concatenate((x.detach().numpy()[:, :, 1:], z[-1]), axis=-1)
-        x = torch.tensor(x, dtype=torch.float32)
-        cur_z, cur_weights = extract_output_weight(net, x, edge_index)
+            x = np.concatenate(
+                (x.detach().cpu().numpy()[:, :, 1:], z[-1]), axis=-1
+            )
+        x = torch.tensor(x, dtype=torch.float32).to(model.device)
+        cur_z, cur_weights = extract_output_weight(model, x, edge_index)
         # save prediction results
         z.append(cur_z)
         # save the all layer weights; size of each layer: (# batches, # ROI, # outputs nodes)
         # 1 batche would be 1 time window here
         layers.append(cur_weights)
     z = np.concatenate(z, axis=-1)
+
     # each item under the key: (# batches, # ROI, # outputs nodes, # horizon)
     restructure = {}
     for horizon_weights in layers:
@@ -120,11 +138,15 @@ def predict_horizon(
             r2_score((y[:, :, h]), z[:, :, h], multioutput="raw_values")
         )
     ts_r2 = np.swapaxes(np.array(ts_r2), 0, -1)
-    return (y, z, layer_features, ts_r2)
+    if f is None and dset_path is None:
+        return (y, z, layer_features, ts_r2)
+
+    # save stuff
+    save_extracted_feature(y, z, layer_features, ts_r2, f, dset_path)
+    return None
 
 
 def save_extracted_feature(
-    ts: np.ndarray,
     y: np.ndarray,
     z: np.ndarray,
     layer_features: List[np.ndarray],
@@ -133,7 +155,6 @@ def save_extracted_feature(
     dset_path: str,
 ) -> None:
     horizon = y.shape[-1]
-    f[dset_path] = ts
 
     for value, key in zip([ts_r2, z, y], ["r2map", "Z", "Y"]):
         new_ds_path = dset_path.replace("timeseries", key)
@@ -144,11 +165,14 @@ def save_extracted_feature(
     y_conn = conn.fit_transform([y[:, :, 0]])[0]
     new_ds_path = dset_path.replace("timeseries", "connectome")
     f[new_ds_path] = y_conn
-
+    del y_conn
+    del y
     # create connectome from simulated data
     z_conns = conn.fit_transform([z[:, :, h] for h in range(horizon)])
     new_ds_path = dset_path.replace("timeseries", "horizon-all_connectome")
     f[new_ds_path] = np.moveaxis(np.array(z_conns), 0, -1)
+    del z_conns
+    del conn
 
     # pooling over output of conv layers
     for key, layer in layer_features.items():
@@ -187,3 +211,4 @@ def save_extracted_feature(
                 f"layer-{key}_pooling-{method_name}_weights",
             )
             f[new_ds_path] = layer_pooled_ts[method_name]
+        del layer_pooled_ts

@@ -20,5 +20,7 @@ horizon: 6
 # this should match the training
 seed: null
 
+optional hparams_file: null
+
 # passing checkpoint path is necessary for evaluation
 ckpt_path: ???

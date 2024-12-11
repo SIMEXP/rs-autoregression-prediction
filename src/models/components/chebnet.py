@@ -104,12 +104,6 @@ class Chebnet(nn.Module):
                 x = layer(x)
         return x.view((x.shape[0], x.shape[1]))
 
-    def predict(
-        self, x: torch.Tensor, edge_index: torch.Tensor
-    ) -> torch.Tensor:
-        self.eval()
-        return self.forward(x, edge_index)
-
 
 class MultiFC(nn.Module):
     """Fully connected layer, connecting all nodes together (for multivariate models).
