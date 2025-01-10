@@ -12,7 +12,7 @@ import rootutils
 import torch
 import torch.nn as nn
 from joblib import Parallel, delayed
-from nilearn.connectome import sym_matrix_to_vec
+from nilearn.connectome import ConnectivityMeasure, sym_matrix_to_vec
 from nilearn.image import math_img
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.plotting import (
@@ -37,11 +37,7 @@ from sklearn.metrics import (
     r2_score,
     roc_auc_score,
 )
-from sklearn.model_selection import (
-    ShuffleSplit,
-    StratifiedKFold,
-    StratifiedShuffleSplit,
-)
+from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.svm import LinearSVC, LinearSVR
@@ -70,17 +66,19 @@ measure2data = {
     "r2map": "r2map",
     "avgr2": "r2map",
 }
-measures = [
-    "connectome_baseline",
-    "connectome_z",
-    "r2map",
-    "layer-NonsharedFC1_pooling-average_weights",
-    "layer-NonsharedFC1_pooling-max_weights",
-    "layer-NonsharedFC1_pooling-std_weights",
-    "layer-ChebConv3_pooling-average_weights",
-    "layer-ChebConv3_pooling-max_weights",
-    "layer-ChebConv3_pooling-std_weights",
-]
+# measures = [
+#     "connectome_baseline",
+#     "connectome_z",
+#     "r2map",
+#     "layer-NonsharedFC1_pooling-average_weights",
+#     "layer-NonsharedFC1_pooling-max_weights",
+#     "layer-NonsharedFC1_pooling-std_weights",
+#     "layer-ChebConv3_pooling-average_weights",
+#     "layer-ChebConv3_pooling-max_weights",
+#     "layer-ChebConv3_pooling-std_weights",
+#     "layer-NonsharedFC1_connectome",
+#     "layer-ChebConv3_connectome",
+# ]
 
 
 def measure_name_validator(measure):
@@ -91,16 +89,21 @@ def measure_name_validator(measure):
         "avgr2",
     ]:
         return measure2data[measure]
-    weight_patter = r"layer-[A-z\d]*_pooling-[a-z]*_weights"
-    results = re.match(weight_patter, measure)
-    if results is None:
+    pool_weight_pattern = r"layer-[A-z\d]*_pooling-[a-z]*_weights"
+    pool_results = re.match(pool_weight_pattern, measure)
+    conn_weight_pattern = r"layer-[A-z\d]*_connectome"
+    conn_results = re.match(conn_weight_pattern, measure)
+    if pool_results is None and conn_results is None:
         raise NotImplementedError(
             "measure must be one of 'connectome_baseline', "
             "'connectome_z','r2map', 'avgr2'"
-            " or in the format of 'layer-{layername}{layernumber}_pooling-{pooling}_weights'."
+            " or in the format of 'layer-{layername}{layernumber}_pooling-{pooling}_weights',"
+            " or 'layer-{layername}{layernumber}_connectome'."
         )
-    else:
+    elif conn_results is None:
         return measure
+    else:
+        return measure.replace("connectome", "weights")
 
 
 def prepare_model_data(
@@ -202,6 +205,12 @@ def load_brain_features(feature_path, labels, measure):
                 d = d.mean()
             elif "pooling" in measure:
                 d = d.flatten()
+            elif "layer" in p:
+                conn = ConnectivityMeasure(
+                    kind="correlation", vectorize=True, discard_diagonal=True
+                )
+                d = conn.fit_transform([d[..., f] for f in range(d.shape[-1])])
+                d = np.mean(d, axis=0)  # average over filters
             data.append(d)
     return pd.DataFrame(np.array(data), index=selected_path)
 
@@ -277,13 +286,50 @@ def main(cfg):
         clf = LogisticRegression(
             penalty="l2", class_weight="balanced", random_state=model_cfg.seed
         )
-    rs = ShuffleSplit(n_splits=5, test_size=0.2)
-    results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
-        delayed(train)(
-            x, y, i, train_index, test_index, phenotype, measure, sample, clf
+    if phenotype != "age":
+        rs = StratifiedShuffleSplit(
+            n_splits=5, test_size=0.2, random_state=model_cfg.seed
         )
-        for i, (train_index, test_index) in enumerate(rs.split(x))
-    )
+        if sample < 0.2 or phenotype != "sex":
+            rs = StratifiedShuffleSplit(
+                n_splits=10, test_size=0.1, random_state=model_cfg.seed
+            )
+        results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
+            delayed(train)(
+                x,
+                y,
+                i,
+                train_index,
+                test_index,
+                phenotype,
+                measure,
+                sample,
+                clf,
+            )
+            for i, (train_index, test_index) in enumerate(rs.split(x, y))
+        )
+    else:
+        rs = ShuffleSplit(
+            n_splits=5, test_size=0.2, random_state=model_cfg.seed
+        )
+        if sample < 0.2:
+            rs = ShuffleSplit(
+                n_splits=10, test_size=0.1, random_state=model_cfg.seed
+            )
+        results = Parallel(n_jobs=8, verbose=1, pre_dispatch="1.5*n_jobs")(
+            delayed(train)(
+                x,
+                y,
+                i,
+                train_index,
+                test_index,
+                phenotype,
+                measure,
+                sample,
+                clf,
+            )
+            for i, (train_index, test_index) in enumerate(rs.split(x))
+        )
     pd.DataFrame.from_dict(results, orient="columns").to_csv(
         f"outputs/downstream/{output_dir_name}/downstream_{phenotype}_{measure}_{sample*100}.tsv",
         sep="\t",

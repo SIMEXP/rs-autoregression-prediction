@@ -1,19 +1,10 @@
-"""
-Extract features from the model.
-If model was trained on gpu, this script should
-be run on a machine with a gpu.
-"""
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-import h5py
 import hydra
-import lightning as L
-import numpy as np
 import rootutils
 import torch
 from lightning import LightningModule
 from omegaconf import DictConfig
-from tqdm import tqdm
 
 torch._dynamo.config.suppress_errors = True  # work around for triton issue
 
@@ -35,29 +26,21 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
 
-from src.data.ukbb_datamodule import load_ukbb_sets
-from src.data.utils import load_data
-from src.models.autoreg_module import GraphAutoRegModule
-from src.models.components.hooks import predict_horizon
 from src.utils import RankedLogger, extras, task_wrapper
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
+import torch
+from calflops import calculate_flops
+from src.models.autoreg_module import GraphAutoRegModule
 
-# need to implement
-# https://docs.h5py.org/en/latest/mpi.html
+batch_size = 128
+window_size = 16
+n_parcel = 197
+
+
 @task_wrapper
 def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """
-    I can't figure out how to plug this in to pytorch prediction
-    hook so here's a stand alone script.
-    """
-
-    if cfg.get("seed"):
-        L.seed_everything(cfg.seed, workers=True)
-    assert cfg.ckpt_path
-
-    log.info(f"Instantiating pytorch model <{cfg.model._target_}>")
     cp = torch.load(cfg.ckpt_path)
     if "net" not in cp["hyper_parameters"]:
         model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
@@ -67,41 +50,33 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
             cfg.ckpt_path
         )
-    model.freeze()  # put in evaluation mode
-
-    log.info("Loading test set subjects")
-    conn_dset_paths: List = load_ukbb_sets(
-        cfg.paths.data_dir, cfg.seed, cfg.data.atlas, stage="test"
+    edge = torch.tensor(hydra.utils.instantiate(cfg.model.edge_index))
+    input_shape = (
+        batch_size,
+        n_parcel,
+        window_size,
     )
-
-    log.info("Extract features.")
-    # save to data dir
-    output_extracted_feat: str = f"{cfg.paths.output_dir}/features.h5"
-    edge = torch.tensor(hydra.utils.instantiate(cfg.model.edge_index)).to(
-        model.device
+    x = torch.ones(()).new_empty(
+        (*input_shape,), dtype=next(model.parameters()).dtype
     )
-    with h5py.File(output_extracted_feat, "a") as f:
-        for dset_path in tqdm(conn_dset_paths):
-            data: np.ndarray = load_data(cfg.data.connectome_file, dset_path)[
-                0
-            ]
-            # make labels per subject
-            predict_horizon(
-                cfg.horizon,
-                model,
-                data,
-                edge_index=edge,
-                timeseries_window_stride_lag=cfg.data.timeseries_window_stride_lag,
-                timeseries_decimate=cfg.data.timeseries_decimate,
-                f=f,
-                dset_path=dset_path,
-            )
-    log.info("Extraction completed.")
-    return None, None  # competibility with task wrapper
+    flops, macs, params = calculate_flops(
+        model=model,
+        output_as_string=False,
+        print_results=False,
+        output_unit=None,
+        kwargs={"x": x, "edge_index": edge},
+    )
+    name = cfg.ckpt_path.split("/")[-1].split(".")[0]
+    log.info(f"FLOPs:{flops}   MACs:{macs}   Params:{params} \n")
+    # save this in a tsv
+    with open(f"outputs/performance_info/{name}.txt", "w") as f:
+        f.write("name\tflops\tmacs\tparams\n")
+        f.write(f"{name}\t{flops}\t{macs}\t{params}\n")
+    return None, None
 
 
 @hydra.main(
-    version_base="1.3", config_path="../configs", config_name="eval.yaml"
+    version_base="1.3", config_path="../configs", config_name="train.yaml"
 )
 def main(cfg: DictConfig) -> Optional[float]:
     """Main entry point for training.
