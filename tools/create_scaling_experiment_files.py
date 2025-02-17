@@ -78,7 +78,7 @@ def create_template(
         Path("configs/experiment/completed") / f"{replace['EXP_NAME']}.yaml"
     ).is_file():
         print(f"Already completed: {replace['EXP_NAME']}.yaml")
-        return 0
+        return 0, None
 
     if not dry_run:
         config = TEMPLATE
@@ -87,7 +87,7 @@ def create_template(
 
         with open(output_path, "w") as f:
             f.write(config)
-    return 1
+    return 1, replace["EXP_NAME"]
 
 
 def main():
@@ -157,13 +157,28 @@ def main():
     )
 
     n_exp = 0
+    exp_names = []
     for current_set in all_combbinations:
         GCL, F, K, FCL, M, N_PARCEL, WINDOW = current_set
         if F < N_PARCEL:
-            n_exp += create_template(
+            complete, name = create_template(
                 GCL, F, K, FCL, M, N_PARCEL, WINDOW, output_dir, args.dry_run
             )
+            n_exp += complete
+            if name is not None:
+                exp_names.append(name)
     print(f"Generate {n_exp}/{len(all_combbinations)} experiments.")
+    print(
+        f"""
+Run:
+python src/train.py -m  seed=1 \\
+    experiment={','.join(exp_names)} \\
+    local=slurm_gpu \\
+    ++hydra.launcher.mem_gb=8 \\
+    ++hydra.launcher.cpus_per_task=10 \\
+    ++hydra.launcher.timeout_min=240
+"""
+    )
 
 
 if __name__ == "__main__":
