@@ -32,7 +32,7 @@ model:
     n_emb: ${data.atlas[1]}
     seq_len: ${data.timeseries_window_stride_lag[0]}
     FK: REPLACE_FK
-    M: RPLACE_M
+    M: REPLACE_M
     FC_type: nonshared_uni
     dropout: 0
     bn_momentum: 0.1
@@ -63,11 +63,13 @@ WINDOW_options = [16, 8]
 
 
 def create_template(
-    GCL, F, K, FCL, M, n_parcels, time_window, output_dir, dry_run
+    GCL, F, K, FCL, M, n_parcels, time_window, output_dir, dry_run=False
 ):
     replace = {
         "REPLACE_FK": str(f"{F},{K}," * GCL)[:-1],
         "REPLACE_M": f"{M}," * FCL + "1",
+        "N_PARCEL": str(n_parcels),
+        "WINDOW": str(time_window),
         "EXP_NAME": f"N-{n_parcels}_W-{time_window}_GCL-{GCL}_F-{F}_K-{K}_FCL-{FCL}_M-{M}",
     }
 
@@ -79,8 +81,9 @@ def create_template(
         return 0
 
     if not dry_run:
+        config = TEMPLATE
         for k in replace:
-            config = TEMPLATE.replace(k, replace[k])
+            config = config.replace(k, replace[k])
 
         with open(output_path, "w") as f:
             f.write(config)
