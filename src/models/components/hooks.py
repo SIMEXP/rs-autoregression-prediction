@@ -110,7 +110,6 @@ def predict_horizon(
         # 1 batche would be 1 time window here
         layers.append(cur_weights)
     z = np.concatenate(z, axis=-1)
-
     # each item under the key: (# batches, # ROI, # outputs nodes, # horizon)
     restructure = {}
     for horizon_weights in layers:
