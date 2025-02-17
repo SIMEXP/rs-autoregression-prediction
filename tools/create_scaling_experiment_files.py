@@ -48,32 +48,107 @@ logger:
     experiment_name: EXP_NAME
 """
 
+import argparse
 import itertools
+from pathlib import Path
 
 GCL_options = [3, 6, 9]
-# F_options = [8, 16, 32, 64, 128]
 F_options = [8, 16, 32]
 K_options = [3, 5, 10]
 FCL_options = [1, 3, 5]
 M_options = [8, 16, 32]
 
-# N_PARCEL_options = [64, 197, 444]
-N_PARCEL_options = [197]
-WINDOW_options = [16]
-# WINDOW_options = [16,8]
+N_PARCEL_options = [64, 197, 444]
+WINDOW_options = [16, 8]
 
 
-if __name__ == "__main__":
+def create_template(
+    GCL, F, K, FCL, M, n_parcels, time_window, output_dir, dry_run
+):
+    replace = {
+        "REPLACE_FK": str(f"{F},{K}," * GCL)[:-1],
+        "REPLACE_M": f"{M}," * FCL + "1",
+        "EXP_NAME": f"N-{n_parcels}_W-{time_window}_GCL-{GCL}_F-{F}_K-{K}_FCL-{FCL}_M-{M}",
+    }
+
+    output_path = output_dir / f"{replace['EXP_NAME']}.yaml"
+    if (
+        Path("configs/experiment/completed") / f"{replace['EXP_NAME']}.yaml"
+    ).is_file():
+        print(f"Already completed: {replace['EXP_NAME']}.yaml")
+        return 0
+
+    if not dry_run:
+        for k in replace:
+            config = TEMPLATE.replace(k, replace[k])
+
+        with open(output_path, "w") as f:
+            f.write(config)
+    return 1
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "output_dir",
+        type=Path,
+        help="Path to save the configs.",
+    )
+    parser.add_argument(
+        "--GCL", type=int, nargs="+", help="Number of ChebNet layers."
+    )
+    parser.add_argument(
+        "--F", type=int, nargs="+", help="Number of filters in ChebNet layers."
+    )
+    parser.add_argument(
+        "--K",
+        type=int,
+        nargs="+",
+        help="Number of polynomials in ChebNet layers.",
+    )
+    parser.add_argument(
+        "--FCL", type=int, nargs="+", help="Number of fully connected layers."
+    )
+    parser.add_argument(
+        "--M",
+        type=int,
+        nargs="+",
+        help="Number of nodes in fully connected layers.",
+    )
+    parser.add_argument(
+        "--n-parcels",
+        type=int,
+        nargs="+",
+        help="Number of parcels.",
+        choices=N_PARCEL_options,
+    )
+    parser.add_argument(
+        "--n-timepoints",
+        type=int,
+        nargs="+",
+        help="Number of timepoints in a window.",
+        choices=WINDOW_options,
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't generate actual files.",
+    )
+    args = parser.parse_args()
+    print(args)
+
+    output_dir = args.output_dir
+
     all_combbinations = list(
         itertools.product(
             *[
-                GCL_options,
-                F_options,
-                K_options,
-                FCL_options,
-                M_options,
-                N_PARCEL_options,
-                WINDOW_options,
+                args.GCL,
+                args.F,
+                args.K,
+                args.FCL,
+                args.M,
+                args.n_parcels,
+                args.n_timepoints,
             ]
         )
     )
@@ -82,20 +157,11 @@ if __name__ == "__main__":
     for current_set in all_combbinations:
         GCL, F, K, FCL, M, N_PARCEL, WINDOW = current_set
         if F < N_PARCEL:
-            n_exp += 1
-    #         replace = {
-    #             "REPLACE_FK": f"{F},{K}," * GCL [:-1],
-    #             "REPLACE_M": f"{M}," * FCL + "1",
-    #             "EXP_NAME": f"N-{N_PARCEL}_W-{WINDOW}_GCL-{GCL}_F-{F}_K-{F}_FCL-{FCL}_M-{M}"
-    #         }
+            n_exp += create_template(
+                GCL, F, K, FCL, M, N_PARCEL, WINDOW, output_dir, args.dry_run
+            )
+    print(f"Generate {n_exp}/{len(all_combbinations)} experiments.")
 
-    #         output_path = f"configs/experiment/{replace['EXP_NAME']}.yaml"
 
-    #         config = TEMPLATE.copy()
-
-    #         for k in replace:
-    #             config = config.replace(k, replace[k])
-
-    #         with open(output_path, "w") as f:
-    #             f.write(config)
-    print(f"Generate {n_exp} experiments.")
+if __name__ == "__main__":
+    main()

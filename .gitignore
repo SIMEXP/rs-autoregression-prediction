@@ -8,6 +8,7 @@ NOTES*
 logs
 *_old/
 *.db
+configs/experiment/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
