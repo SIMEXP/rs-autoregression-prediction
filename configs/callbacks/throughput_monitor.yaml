@@ -1,0 +1,4 @@
+throughput_monitor:
+  _target_: lightning.pytorch.callbacks.ThroughputMonitor
+  batch_size_fn: null
+  length_fn: null

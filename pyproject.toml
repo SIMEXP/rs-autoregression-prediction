@@ -1,3 +1,39 @@
+[project]
+name="src"
+version="0.1.0"
+description="Project scripts for ukbiobank scaling."
+author="htwangtw"
+license="MIT"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "hydra-core==1.3.2",
+    "hydra-colorlog==1.2.0",
+    "hydra-submitit-launcher==1.2.0",
+    "lightning",
+    "comet_ml",
+    "rootutils",
+    "rich",
+    "h5py",
+    "pandas",
+    "seaborn",
+    "nilearn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "pre-commit",
+    "isort",
+    "codespell",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [tool.black]
 target-version = ['py311']
 exclude = "src/fmri-autoreg"
