@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Union
@@ -79,6 +80,7 @@ measure2data = {
 #     "layer-NonsharedFC1_connectome",
 #     "layer-ChebConv3_connectome",
 # ]
+logger = logging.getLogger("downstream")
 
 
 def measure_name_validator(measure):
@@ -195,7 +197,10 @@ def load_brain_features(feature_path, labels, measure):
     data = []
     with h5py.File(feature_path, "r") as h5file:
         for p in selected_path:
-            d = h5file[p][:]
+            try:
+                d = h5file[p][:]
+            except KeyError:
+                logger.info(f"missing {p}")
 
             if d.shape[-1] == 6:  # last dimension should always be horizon
                 d = d[..., 0]  # use t+1
