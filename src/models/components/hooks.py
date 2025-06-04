@@ -91,6 +91,7 @@ def predict_horizon(
     history, _ = make_sequence_single_subject(data, m, w + horizon, s, 0)
     y = history[:, :, w:]
     x = history[:, :, :w]
+    del history
     z, layers = [], []
     for h in range(horizon):
         if h > 0:
@@ -106,15 +107,18 @@ def predict_horizon(
         cur_z, cur_weights = extract_output_weight(model, x, edge_index)
         # save prediction results
         z.append(cur_z)
+        del cur_z
         # save the all layer weights; size of each layer: (# batches, # ROI, # outputs nodes)
         # 1 batche would be 1 time window here
         layers.append(cur_weights)
+        del cur_weights
     z = np.concatenate(z, axis=-1)
-    # each item under the key: (# batches, # ROI, # outputs nodes, # horizon)
+    # each item under the key (layer name) in the layer_features dictionary:
+    # (# batches, # ROI, # outputs nodes, # horizon)
     restructure = {}
     for horizon_weights in layers:
         for key in horizon_weights:
-            if not restructure.get(key):
+            if key not in restructure:
                 restructure[key] = []
             for i, layer in enumerate(horizon_weights[key]):
                 if len(restructure[key]) != len(horizon_weights[key]):
@@ -141,7 +145,8 @@ def predict_horizon(
         return (y, z, layer_features, ts_r2)
 
     # save stuff
-    save_extracted_feature(y, z, layer_features, ts_r2, f, dset_path)
+    conn = ConnectivityMeasure(kind="correlation")
+    save_extracted_feature(y, z, layer_features, ts_r2, f, dset_path, conn)
     return None
 
 
@@ -152,15 +157,16 @@ def save_extracted_feature(
     ts_r2: np.ndarray,
     f: h5py.File,
     dset_path: str,
+    conn: ConnectivityMeasure,
 ) -> None:
     horizon = y.shape[-1]
 
+    # need to improve all the following process through chunks
     for value, key in zip([ts_r2, z, y], ["r2map", "Z", "Y"]):
         new_ds_path = dset_path.replace("timeseries", key)
         f[new_ds_path] = value
 
     # create connectome from real data
-    conn = ConnectivityMeasure(kind="correlation")
     y_conn = conn.fit_transform([y[:, :, 0]])[0]
     new_ds_path = dset_path.replace("timeseries", "connectome")
     f[new_ds_path] = y_conn
@@ -195,6 +201,11 @@ def save_extracted_feature(
                 layer_pooled_ts[method_name].append(d)
 
         for method_name in pooling_funcs:
+            # save
+            new_ds_path = dset_path.replace(
+                "timeseries",
+                f"layer-{key}_pooling-{method_name}_weights",
+            )
             # concatenate along the horizon
             layer_pooled_ts[method_name] = np.moveaxis(
                 np.concatenate(
@@ -202,12 +213,6 @@ def save_extracted_feature(
                 ),
                 0,
                 1,
-            )
-
-            # save
-            new_ds_path = dset_path.replace(
-                "timeseries",
-                f"layer-{key}_pooling-{method_name}_weights",
             )
             f[new_ds_path] = layer_pooled_ts[method_name]
         del layer_pooled_ts

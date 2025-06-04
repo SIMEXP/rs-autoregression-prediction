@@ -27,21 +27,16 @@ trainer:
   limit_val_batches: ${proportion_sample}
 
 model:
+  n_regions: N_PARCEL_int
   net:
     _target_: src.models.components.chebnet.Chebnet
-    n_emb: ${data.atlas[1]}
+    n_emb: N_PARCEL_int
     seq_len: ${data.timeseries_window_stride_lag[0]}
     FK: REPLACE_FK
     M: REPLACE_M
     FC_type: nonshared_uni
     dropout: 0
     bn_momentum: 0.1
-
-data:
-  atlas: [MIST, N_PARCEL]
-  timeseries_window_stride_lag: [WINDOW, 1, 1]
-  num_workers: 8
-  pin_memory: true
 
 logger:
   comet:
@@ -50,6 +45,7 @@ logger:
 
 import argparse
 import itertools
+import re
 from pathlib import Path
 
 GCL_options = [3, 6, 9]
@@ -60,17 +56,21 @@ M_options = [8, 16, 32]
 
 N_PARCEL_options = [64, 197, 444]
 WINDOW_options = [16, 8]
+REPLACE_ATLAS = "mist"
 
 
 def create_template(
-    GCL, F, K, FCL, M, n_parcels, time_window, output_dir, dry_run=False
+    GCL, F, K, FCL, M, n_parcels, time_window, output_dir, atlas, dry_run=False
 ):
+    n_parcels_int = re.findall(r"^\d*", n_parcels)[0]
     replace = {
         "REPLACE_FK": str(f"{F},{K}," * GCL)[:-1],
         "REPLACE_M": f"{M}," * FCL + "1",
-        "N_PARCEL": str(n_parcels),
+        "N_PARCEL_int": n_parcels_int,
+        "N_PARCEL": n_parcels,
         "WINDOW": str(time_window),
-        "EXP_NAME": f"N-{n_parcels}_W-{time_window}_GCL-{GCL}_F-{F}_K-{K}_FCL-{FCL}_M-{M}",
+        "EXP_NAME": f"N-{n_parcels_int}_W-{time_window}_GCL-{GCL}_F-{F}_K-{K}_FCL-{FCL}_M-{M}",
+        "ATLASNAME": atlas,
     }
 
     output_path = output_dir / f"{replace['EXP_NAME']}.yaml"
@@ -98,6 +98,13 @@ def main():
         help="Path to save the configs.",
     )
     parser.add_argument(
+        "--atlas",
+        type=str,
+        help="Atlas.",
+        default=REPLACE_ATLAS,
+        choices=["mist", "schaefer"],
+    )
+    parser.add_argument(
         "--GCL", type=int, nargs="+", help="Number of ChebNet layers."
     )
     parser.add_argument(
@@ -120,10 +127,9 @@ def main():
     )
     parser.add_argument(
         "--n-parcels",
-        type=int,
+        type=str,
         nargs="+",
         help="Number of parcels.",
-        choices=N_PARCEL_options,
     )
     parser.add_argument(
         "--n-timepoints",
@@ -160,9 +166,19 @@ def main():
     exp_names = []
     for current_set in all_combbinations:
         GCL, F, K, FCL, M, N_PARCEL, WINDOW = current_set
-        if F < N_PARCEL:
+        n_parcels = int(re.findall(r"^\d*", N_PARCEL)[0])
+        if F < n_parcels:
             complete, name = create_template(
-                GCL, F, K, FCL, M, N_PARCEL, WINDOW, output_dir, args.dry_run
+                GCL,
+                F,
+                K,
+                FCL,
+                M,
+                N_PARCEL,
+                WINDOW,
+                output_dir,
+                args.atlas,
+                args.dry_run,
             )
             n_exp += complete
             if name is not None:
@@ -172,10 +188,11 @@ def main():
         f"""
 Run:
 python src/train.py -m  seed=1 \\
+    data=ukbb_{args.atlas} \\
     experiment={','.join(exp_names)} \\
     local=slurm_gpu \\
-    ++hydra.launcher.mem_gb=8 \\
-    ++hydra.launcher.cpus_per_task=10 \\
+    ++hydra.launcher.mem_gb=6 \\
+    ++hydra.launcher.cpus_per_task=5 \\
     ++hydra.launcher.timeout_min=240
 """
     )

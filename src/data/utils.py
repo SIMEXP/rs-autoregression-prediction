@@ -31,6 +31,8 @@ def create_connectome(
         data = load_data(
             path=data_file, h5dset_path=dset, standardize=False, dtype="data"
         )
+        if not data:
+            continue
         corr_mat = connectome_measure.fit_transform(data)[0]
         if avg_corr_mats is None:
             avg_corr_mats = corr_mat
@@ -124,7 +126,11 @@ def load_data(
     if dtype == "data":
         with h5py.File(path, "r") as h5file:
             for p in h5dset_path:
-                data_list.append(h5file[p][:])
+                try:
+                    data_tmp = h5file[p][:]
+                except KeyError:
+                    return None
+                data_list.append(data_tmp)
         if standardize and data_list:
             means = np.concatenate(data_list, axis=0).mean(axis=0)
             stds = np.concatenate(data_list, axis=0).std(axis=0)

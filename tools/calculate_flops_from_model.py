@@ -41,16 +41,22 @@ n_parcel = 197
 
 @task_wrapper
 def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    cp = torch.load(cfg.ckpt_path)
-    if "net" not in cp["hyper_parameters"]:
-        model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
-            cfg.ckpt_path, net=hydra.utils.instantiate(cfg.model.net)
-        )
-    else:
-        model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
-            cfg.ckpt_path
-        )
     edge = torch.tensor(hydra.utils.instantiate(cfg.model.edge_index))
+    if "ckpt_path" in cfg:
+        cp = torch.load(cfg.ckpt_path)
+        if "net" not in cp["hyper_parameters"]:
+            model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
+                cfg.ckpt_path, net=hydra.utils.instantiate(cfg.model.net)
+            )
+        else:
+            model: LightningModule = GraphAutoRegModule.load_from_checkpoint(
+                cfg.ckpt_path
+            )
+    else:
+        model: LightningModule = GraphAutoRegModule(
+            net=hydra.utils.instantiate(cfg.model)
+        )
+
     input_shape = (
         batch_size,
         n_parcel,

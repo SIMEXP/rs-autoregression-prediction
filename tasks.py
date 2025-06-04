@@ -13,10 +13,21 @@ from tqdm import tqdm
 
 
 @invoke.task
+def migrate_flops_stats(c):
+    load_dotenv()
+    c.run(
+        "rsync -vaRL outputs/performance_info/./* "
+        f"{os.getenv('ELM_USER')}@{os.getenv('ELM_ADDRESS')}:"
+        f"/home/{os.getenv('ELM_USER')}/simexp/{os.getenv('ELM_USER')}/"
+        "ukbb_scaling_reports/data/ukbb_gcn_scaling/flops"
+    )
+
+
+@invoke.task
 def local_job_status(c):
     log_dir = Path("outputs/autoreg/logs/train/multiruns")
     output_configs = log_dir.glob("**/.hydra/config.yaml")
-    extra_time = 120
+    extra_time = 480
 
     if Path("outputs/local_job_status.json").is_file():
         with open("outputs/local_job_status.json") as f:
@@ -107,7 +118,8 @@ def local_job_status(c):
             pass
         else:
             ckpt_path = job_status[exp]["ckpt"].replace("=", "\\=")
-            command = f'python src/train.py -m  seed=1 experiment={exp} local=slurm_gpu ++logger.comet.experiment_key={job_status[exp]["comet_key"]} ++hydra.launcher.mem_gb=6 ++hydra.launcher.cpus_per_task=5 ++hydra.launcher.timeout_min={extra_time} ckpt_path="{ckpt_path}" ++hydra.sweep.subdir={job_status[exp]["comet_key"]}'
+            dataset = "" if "N-197" in exp else "data=ukbb_schaefer"
+            command = f'python src/train.py -m {dataset} seed=1 experiment={exp} local=slurm_gpu ++logger.comet.experiment_key={job_status[exp]["comet_key"]} ++hydra.launcher.mem_gb=6 ++hydra.launcher.cpus_per_task=5 ++hydra.launcher.timeout_min={extra_time} ckpt_path="{ckpt_path}" ++hydra.sweep.subdir={job_status[exp]["comet_key"]}'
             job_status[exp]["rerun"] = command
             rerun.append(command)
 

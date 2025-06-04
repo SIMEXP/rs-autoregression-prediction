@@ -1,0 +1,14 @@
+---
+_target_: src.data.ukbb_datamodule.UKBBDataModule
+connectome_file: inputs/connectomes/ukbb_Schaefer_libral_scrub_20250303.h5
+phenotype_file: inputs/connectomes/ukbb_Schaefer_libral_scrub_20250303_phenotype.tsv
+data_dir: ${paths.data_dir}
+atlas: [Schaefer20187Networks, 800Parcels7Networks]
+timeseries_decimate: 4 # decimation factor; original TR=0.735s; take every 4th to mimic TR=3 s
+timeseries_window_stride_lag: [16, 1, 1] # window of ~24 seconds = 8 TRs
+train_val_test_split: [0.6, 0.2, 0.2]
+class_balance_confounds: [site, sex, age, mean_fd_raw, proportion_kept]
+batch_size: 128
+num_workers: 4
+pin_memory: false
+random_state: ${seed}

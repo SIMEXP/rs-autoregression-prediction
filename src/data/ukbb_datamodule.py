@@ -100,6 +100,14 @@ class UKBBDataModule(LightningDataModule):
         if out_path.exists():
             return None
 
+        # fp = h5py.File(self.hparams.connectome_file)
+        # valid_subjects = fp['participant_id']
+
+        # for dset in ["train", "validation", "test"]:
+        #     clean_list = [sub for sub in sample[dset] if sub in valid_subjects]
+        #     sample.update({dset: clean_list})
+        # log.info("Sanity check for subject labels.")
+
         conn_dset_paths = load_ukbb_dset_path(
             participant_id=sample["train"],
             atlas_desc=f"atlas-{self.hparams.atlas[0]}_desc-{self.hparams.atlas[1]}",
@@ -114,7 +122,7 @@ class UKBBDataModule(LightningDataModule):
         # save connectome to disk as h5
         w, s, lag = self.hparams.timeseries_window_stride_lag
         m = self.hparams.timeseries_decimate  # decimate factor
-        n_regions = self.hparams.atlas[1]
+        n_regions = connectome.shape[0]
         with h5py.File(out_path, "a") as f:
             f.create_dataset("connectome", data=connectome)
             # make sequence for train, val, test, for model training
@@ -127,9 +135,10 @@ class UKBBDataModule(LightningDataModule):
                 )
                 log.info(f"Creating labels for {len(dset_paths)} scans.")
                 for dset_path in tqdm(dset_paths):
-                    data = load_data(self.hparams.connectome_file, dset_path)[
-                        0
-                    ]
+                    data = load_data(self.hparams.connectome_file, dset_path)
+                    if not data:
+                        continue
+                    data = data[0]
                     x, y = make_sequence_single_subject(data, m, w, s, lag)
                     if x.shape[0] == 0 or x is None:
                         log.warning(

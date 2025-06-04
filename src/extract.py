@@ -82,9 +82,14 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     )
     with h5py.File(output_extracted_feat, "a") as f:
         for dset_path in tqdm(conn_dset_paths):
-            data: np.ndarray = load_data(cfg.data.connectome_file, dset_path)[
-                0
-            ]
+            data_tmp: List | None = load_data(
+                cfg.data.connectome_file, dset_path
+            )
+            if data_tmp is None:
+                continue
+
+            data: np.ndarray = data_tmp[0]
+            del data_tmp
             # make labels per subject
             predict_horizon(
                 cfg.horizon,
@@ -96,6 +101,8 @@ def extract(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                 f=f,
                 dset_path=dset_path,
             )
+            del data
+            f.flush()
     log.info("Extraction completed.")
     return None, None  # competibility with task wrapper
 

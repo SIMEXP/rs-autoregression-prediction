@@ -16,6 +16,7 @@ hydra:
     additional_parameters:
       { mail-user: "${oc.env:SLACK_EMAIL_BOT}", mail-type: ALL }
     array_parallelism: 256
+    max_num_timeout: 3
     setup:
       - module load httpproxy
       - export HYDRA_FULL_ERROR=1

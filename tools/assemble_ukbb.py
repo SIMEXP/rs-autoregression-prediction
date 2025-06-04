@@ -28,11 +28,14 @@ def load_data(path, task_filter=None):
       (list of numpy arrays): loaded data
     """
     data_list = {}
-    with h5py.File(path, "r") as h5file:
-        for dset in _traverse_datasets(h5file):
-            if task_filter is None or re.search(task_filter, dset):
-                data_list[dset] = h5file[dset][:]
-    return data_list
+    try:
+        with h5py.File(path, "r") as h5file:
+            for dset in _traverse_datasets(h5file):
+                if task_filter is None or re.search(task_filter, dset):
+                    data_list[dset] = h5file[dset][:]
+        return data_list
+    except OSError:
+        return None
 
 
 def _traverse_datasets(hdf_file):
@@ -101,11 +104,14 @@ def main():
                 continue
 
             if fnmatch.fnmatch(member.name, "*simple+gsr.h5"):
-                valid_subject.append(subj)
                 f.extract(member, path=".")
                 path_tmp = Path(member.name)
                 subj_data = load_data(path_tmp, task_filter="sub-.*timeseries")
                 path_tmp.unlink()
+                if subj_data is None:  # likely broken file
+                    print(f"file corruption {subj}")
+                    continue
+                valid_subject.append(subj)
                 for k, v in subj_data.items():
                     dset_name = f"/ukbb/sub-{subj}{k}"
                     with h5py.File(path_h5, "a") as new_f:
